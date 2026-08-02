@@ -29,6 +29,7 @@ from src.agents.synthesizer import synthesize
 from src.obs.trace import Timer, log_step, save_trace, save_full_state
 from src.orchestrator.allocator import allocate_budget, should_continue
 from src.orchestrator.config import Config
+from src.orchestrator.evolution import active_claims_for, evolve_claims
 from src.orchestrator.state import ResearchState
 from src.scoring.confidence import score_confidence
 from src.scoring.difficulty import estimate_difficulty, update_difficulty
@@ -54,6 +55,14 @@ def run_research(
     if use_mock:
         sub_llm = MockLLMClient(model="mock", temperature=config.llm.temperature, max_tokens=config.llm.max_tokens)
         synth_llm = MockLLMClient(model="mock", temperature=config.llm.temperature, max_tokens=2000)
+        # Mock challenger keeps a distinct model name so the self-agreement
+        # ablation still reads as "different model" in the trace.
+        challenger_llm = MockLLMClient(
+            model=config.evolution.challenger_model or "mock-challenger",
+            temperature=config.llm.temperature,
+            max_tokens=config.llm.max_tokens,
+        )
+        reviser_llm = sub_llm
     else:
         import os
         api_key = os.environ.get(config.llm.api_key_env, "")
@@ -71,6 +80,30 @@ def run_research(
             max_tokens=2000,
             api_key=api_key,
             base_url=base_url,
+        )
+        # The challenger gets its OWN client so it can sit on a different
+        # provider entirely, not merely a different model string. Independence
+        # from the extractor is the whole point (DECISIONS.md D021).
+        challenger_key = os.environ.get(
+            config.evolution.challenger_api_key_env or config.llm.api_key_env, ""
+        )
+        challenger_llm = LLMClient(
+            model=config.evolution.challenger_model or config.llm.sub_step_model,
+            temperature=config.llm.temperature,
+            max_tokens=config.llm.max_tokens,
+            api_key=challenger_key,
+            base_url=(config.evolution.challenger_base_url or config.llm.base_url) or None,
+        )
+        reviser_llm = (
+            sub_llm if not config.evolution.reviser_model
+            or config.evolution.reviser_model == config.llm.sub_step_model
+            else LLMClient(
+                model=config.evolution.reviser_model,
+                temperature=config.llm.temperature,
+                max_tokens=config.llm.max_tokens,
+                api_key=api_key,
+                base_url=base_url,
+            )
         )
 
     state = ResearchState(query=query)
@@ -106,6 +139,30 @@ def run_research(
                 verify_claims(state, new_claims, sub_llm, config)
                 score_confidence(state, new_claims, config)
 
+                # Claim evolution: challenge EVERY active claim for this
+                # sub-question — including ones written in earlier rounds —
+                # against the full accumulated evidence pool. This is what lets
+                # this round's evidence rewrite an earlier round's claim
+                # instead of merely sitting next to it.
+                evolve_claims(
+                    state, sq,
+                    challenger_llm=challenger_llm,
+                    reviser_llm=reviser_llm,
+                    verifier_llm=sub_llm,
+                    config=config,
+                    round_num=round_num,
+                    # Reuses the challenger client for judging: it is already
+                    # independent from the extractor (DECISIONS.md D021), so no
+                    # third API client is needed for this second quality signal.
+                    judge_llm=challenger_llm,
+                )
+
+                # Re-score every surviving claim: revisions changed the text,
+                # the support scores, and the reasoning scores.
+                sq_claims = active_claims_for(state, sq.sq_id)
+                if sq_claims:
+                    score_confidence(state, sq_claims, config)
+
                 # Update difficulty based on confidence
                 update_difficulty(state, sq, new_claims, config)
 
@@ -119,22 +176,31 @@ def run_research(
                         break
 
     # Phase 3: Cross-source contradiction detection
-    detect_contradictions(state, state.claims, sub_llm, config)
+    # Retracted claims are excluded — a claim the system already withdrew should
+    # not go on to generate contradictions or drag down its counterpart's score.
+    surviving_claims = [c for c in state.claims if c.is_active]
+    detect_contradictions(state, surviving_claims, sub_llm, config)
 
     # Re-score confidence with contradiction info
-    score_confidence(state, state.claims, config)
+    score_confidence(state, surviving_claims, config)
 
     # Phase 4: Synthesize report
     synthesize(state, synth_llm, config)
 
+    revised = sum(1 for c in state.claims if c.revisions)
+    retracted = sum(1 for c in state.claims if c.status == "retracted")
     log_step(
         state, "pipeline", "end",
         f"Query: {query[:100]}",
-        f"Report: {len(state.report or '')} chars, {len(state.claims)} claims, {len(state.contradictions)} contradictions",
+        f"Report: {len(state.report or '')} chars, {len(surviving_claims)} claims "
+        f"({revised} revised, {retracted} retracted), {len(state.contradictions)} contradictions",
         metadata={
             "total_tokens": state.total_tokens,
             "total_latency_ms": state.total_latency_ms,
             "total_evidence": len(state.evidence),
+            "claims_revised": revised,
+            "claims_retracted": retracted,
+            "challenges_issued": len(state.challenges),
         },
     )
 

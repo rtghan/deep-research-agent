@@ -161,4 +161,15 @@ class LLMClient:
             parsed = json.loads(text)
         except json.JSONDecodeError:
             parsed = _extract_json_from_text(text)
+
+        # Every caller's system prompt asks for a JSON OBJECT, but valid JSON
+        # includes bare lists, numbers, and strings too — a model can return
+        # `["some claim"]` instead of `{"claims": ["some claim"]}` and still
+        # have technically produced valid JSON. Observed in practice with
+        # gemma-4-26b via OpenRouter during the 2026-08 evaluation, where it
+        # crashed verify_claims (`'list' object has no attribute 'get'`).
+        # Every caller does result.get(...) assuming a dict, so enforce that
+        # guarantee once here rather than defensively in every agent.
+        if not isinstance(parsed, dict):
+            parsed = {"_unparsed": parsed}
         return parsed, llm_resp

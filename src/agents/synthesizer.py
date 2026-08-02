@@ -33,6 +33,11 @@ Rules:
 - If claims contradict each other, present both sides explicitly.
 - If a sub-question has insufficient evidence, say so in a "Known Gaps" section.
 - Be precise and quantitative where possible.
+- Some claims were revised as evidence accumulated — they are marked with their
+  version and the operation that produced it (narrowed, reversed, refined).
+  Report the CURRENT text. Where a claim was reversed or retracted, say so in
+  the "How Claims Changed" section: a research process that corrected itself is
+  a finding, not an embarrassment to hide.
 
 Output a markdown report with these sections:
 ## Executive Summary
@@ -41,7 +46,10 @@ Output a markdown report with these sections:
 ### [Sub-question 2]
 ...
 ## Contradictions & Disagreements
-## Known Gaps & Limitations"""
+## How Claims Changed
+## Known Gaps & Limitations
+
+Omit "How Claims Changed" only if no claim was revised."""
 
 
 def synthesize(
@@ -50,15 +58,26 @@ def synthesize(
     config: Config,
 ) -> None:
     """Produce the final research report from verified claims."""
-    if not state.plan or not state.claims:
-        state.report = "# Research Report\n\nInsufficient evidence to generate a report."
+    # Retracted claims are excluded from the report body — the system withdrew
+    # them — but their retraction is reported in "How Claims Changed" below.
+    active_claims = [c for c in state.claims if c.is_active]
+    retracted_claims = [c for c in state.claims if c.status == "retracted"]
+
+    if not state.plan or not active_claims:
+        note = ""
+        if retracted_claims:
+            note = (
+                f"\n\nAll {len(retracted_claims)} extracted claim(s) were retracted "
+                f"during verification — the evidence gathered did not support them."
+            )
+        state.report = f"# Research Report\n\nInsufficient evidence to generate a report.{note}"
         return
 
     evidence_map = {c.chunk_id: c for c in state.evidence}
 
     # Build the claims context for the LLM
     claims_by_sq = {}
-    for claim in state.claims:
+    for claim in active_claims:
         sq_id = claim.sub_question_id or "unassigned"
         if sq_id not in claims_by_sq:
             claims_by_sq[sq_id] = []
@@ -81,7 +100,14 @@ def synthesize(
                 if chunk:
                     sources.append(chunk.source_title)
             src_str = "; ".join(sources) if sources else "no source"
-            context += f"- [confidence={conf:.2f}, status={status}] {claim.text} [Source: {src_str}]\n"
+            version_note = ""
+            if claim.revisions:
+                last_op = claim.revisions[-1].operation
+                version_note = f", v{claim.version}, last revised: {last_op}"
+            context += (
+                f"- [confidence={conf:.2f}, status={status}{version_note}] "
+                f"{claim.text} [Source: {src_str}]\n"
+            )
         context += "\n"
 
     if state.contradictions:
@@ -92,6 +118,31 @@ def synthesize(
             context += f"- {con.description}\n"
             context += f"  Side A ({con.source_a}): {claim_a.text if claim_a else 'N/A'}\n"
             context += f"  Side B ({con.source_b}): {claim_b.text if claim_b else 'N/A'}\n\n"
+
+    # Claim evolution history — how the research process corrected itself.
+    evolved = [c for c in state.claims if c.revisions]
+    if evolved:
+        context += "# How Claims Changed (claim evolution)\n\n"
+        for claim in evolved:
+            for rev in claim.revisions:
+                if rev.operation == "retract":
+                    context += (
+                        f"- RETRACTED (round {rev.round_num}): \"{rev.prev_text}\"\n"
+                        f"  Reason: {rev.rationale}\n"
+                        f"  Evidence balance at retraction: {rev.evidence_balance:+.2f}\n\n"
+                    )
+                else:
+                    delta = ""
+                    if rev.support_before is not None and rev.support_after is not None:
+                        delta = f" (support {rev.support_before:.2f} → {rev.support_after:.2f})"
+                    context += (
+                        f"- {rev.operation.upper()} in round {rev.round_num}{delta}:\n"
+                        f"  Before: \"{rev.prev_text}\"\n"
+                        f"  After:  \"{rev.new_text}\"\n"
+                        f"  Why: {rev.rationale}\n"
+                        f"  Evidence balance: {rev.evidence_balance:+.2f}"
+                        f"{', flaws: ' + ', '.join(rev.flaws) if rev.flaws else ''}\n\n"
+                    )
 
     with Timer() as timer:
         resp = llm.complete(
@@ -105,7 +156,10 @@ def synthesize(
         state,
         component="synthesizer",
         step="synthesize",
-        input_summary=f"{len(state.claims)} claims, {len(state.contradictions)} contradictions",
+        input_summary=(
+            f"{len(active_claims)} active claims ({len(evolved)} revised, "
+            f"{len(retracted_claims)} retracted), {len(state.contradictions)} contradictions"
+        ),
         output_summary=f"Report: {len(resp.text)} chars",
         latency_ms=timer.ms,
         cost_tokens=resp.total_tokens,

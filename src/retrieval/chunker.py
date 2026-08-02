@@ -24,6 +24,7 @@ def chunk_text(
     chunk_overlap: int = 200,
     retrieval_round: int = 0,
     chunk_id_prefix: str = "chunk",
+    sub_question_id: str | None = None,
 ) -> list[EvidenceChunk]:
     """
     Split text into overlapping chunks, each tagged with provenance.
@@ -47,6 +48,7 @@ def chunk_text(
                 offset_start=start,
                 offset_end=end,
                 retrieval_round=retrieval_round,
+                sub_question_id=sub_question_id,
             ))
             idx += 1
         start += chunk_size - chunk_overlap

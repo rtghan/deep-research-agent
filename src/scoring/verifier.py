@@ -83,7 +83,10 @@ def verify_claims(
                 user=f"Claim: {claim.text}\n\nEvidence:\n{evidence_context}\n\nIs this claim supported by the evidence?",
             )
 
-        claim.support_score = float(result.get("support_score", 0.5))
+        try:
+            claim.support_score = float(result.get("support_score", 0.5))
+        except (TypeError, ValueError):
+            claim.support_score = 0.5
         status = result.get("status", "insufficient")
         claim.verification_status = status
 

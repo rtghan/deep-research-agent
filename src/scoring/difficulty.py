@@ -78,8 +78,9 @@ def update_difficulty_from_confidence(
     the linguistic estimate suggested. This is the Track A ↔ Track B link:
     the verifier's output becomes the allocator's input.
     """
-    # Get claims for this sub-question
-    sq_claims = [c for c in state.claims if c.sub_question_id == sq.sq_id]
+    # Get claims for this sub-question. Retracted claims are excluded — the
+    # system already withdrew them, so they should not keep driving compute.
+    sq_claims = [c for c in state.claims if c.sub_question_id == sq.sq_id and c.is_active]
     if not sq_claims:
         return sq.difficulty
 

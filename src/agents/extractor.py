@@ -69,6 +69,7 @@ def extract_claims(
         claim = Claim(
             claim_id=f"claim_{existing_count + i}",
             text=text,
+            original_text=text,  # v1 text, preserved across later revisions
             evidence_ids=evidence_ids,
             sub_question_id=sq.sq_id,
         )

@@ -68,6 +68,23 @@ def allocate_initial_budgets(state: ResearchState, config: Config) -> None:
     )
 
 
+def _claims_churned_last_round(state: ResearchState, sq: SubQuestion) -> bool:
+    """
+    Did any claim for this sub-question get revised in the round just finished?
+
+    This is the evolution loop's own convergence signal, distinct from
+    confidence: a claim can be revised into a high-confidence form and still be
+    unstable, because the next batch of evidence may narrow or reverse it again.
+    """
+    for claim in state.claims:
+        if claim.sub_question_id != sq.sq_id:
+            continue
+        for rev in claim.revisions:
+            if rev.round_num == sq.rounds_used:
+                return True
+    return False
+
+
 def should_continue(
     state: ResearchState,
     sq: SubQuestion,
@@ -89,9 +106,25 @@ def should_continue(
         return sq.rounds_used < sq.compute_budget
 
     # Adaptive: check if confidence is still low
-    sq_claims = [c for c in state.claims if c.sub_question_id == sq.sq_id]
+    sq_claims = [c for c in state.claims if c.sub_question_id == sq.sq_id and c.is_active]
     if not sq_claims:
         return True  # no claims yet, definitely continue
+
+    # Claim churn: if the last round's evidence forced revisions, the picture is
+    # still moving and another round is likely to keep moving it. A sub-question
+    # whose claims are still being rewritten has not converged, however confident
+    # the individual claims currently look.
+    if config.evolution.enabled and _claims_churned_last_round(state, sq):
+        log_step(
+            state,
+            component="allocator",
+            step="continue_on_churn",
+            input_summary=f"SQ: {sq.question[:60]}",
+            output_summary="claims still being revised — not converged",
+            latency_ms=0,
+            cost_tokens=0,
+        )
+        return True
 
     avg_confidence = sum(c.confidence or 0.5 for c in sq_claims) / len(sq_claims)
     if avg_confidence < config.adaptive.low_confidence_threshold:

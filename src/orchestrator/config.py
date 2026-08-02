@@ -50,6 +50,50 @@ class VerificationConfig:
 
 
 @dataclass
+class EvolutionConfig:
+    """
+    Claim evolution: the challenger → reviser loop.
+
+    The challenger is deliberately a DIFFERENT model from sub_step_model (which
+    does extraction), and can point at a different provider entirely via
+    challenger_base_url / challenger_api_key_env. This is the defense against
+    self-agreement bias — a model asked to critique its own claims tends to
+    ratify them. Setting challenger_model == sub_step_model turns that defense
+    off, which is exactly the `evolution_self` ablation.
+    """
+    enabled: bool = True
+    challenger_model: str = "gpt-4o"
+    challenger_base_url: str = ""        # "" → inherit llm.base_url
+    challenger_api_key_env: str = ""     # "" → inherit llm.api_key_env
+    reviser_model: str = ""              # "" → inherit llm.sub_step_model
+    max_challenges_per_round: int = 12   # cost cap; lowest-confidence claims first
+    stability_rounds: int = 2            # N consecutive "keep" verdicts → frozen
+    # A sub-question's pool can run to hundreds of chunks (one arXiv PDF alone
+    # chunks into dozens). The challenge prompt is built per claim per round, so
+    # the pool must be sampled, not dumped. Because the balance score is
+    # SOURCE-weighted, what the challenger needs is breadth of sources — seeing
+    # 40 chunks of one paper tells it less than 8 chunks from 8 papers.
+    max_evidence_chunks: int = 24        # chunks per challenge prompt
+    max_chunks_per_source: int = 3       # round-robin cap, keeps breadth
+    # Evidence-balance gates. balance = (w_sup - w_ref) / (w_sup + w_ref),
+    # where weights count DISTINCT SOURCES, not chunks.
+    nuance_balance_threshold: float = 0.5    # below this → add nuance
+    reversal_balance_threshold: float = -0.3  # below this → flip the position
+    reasoning_soundness_threshold: float = 0.6  # below this → refine the logic
+
+    # --- Fixes from the 2026-08 real-model evaluation (TESTING.md) ---
+    # balance is a RATIO — compute_evidence_balance(0, 1) is -1.0, identical to
+    # (0 supporting, 10 refuting). A single dissenting source against a claim
+    # with no other coverage should not get the same reversal authority as ten
+    # independent sources. Require a minimum total source count before a claim
+    # is allowed to reverse or retract on evidence-balance grounds; below it,
+    # the claim is downgraded to "narrow" (add a caveat) instead.
+    min_sources_for_reversal: int = 2
+    # Second, independent quality signal. See ClaimRevision.judge_verdict.
+    judge_revisions: bool = True
+
+
+@dataclass
 class SynthesisConfig:
     include_gaps: bool = True
     output_format: str = "markdown"
@@ -66,6 +110,7 @@ class Config:
     retrieval: RetrievalConfig
     adaptive: AdaptiveConfig
     verification: VerificationConfig
+    evolution: EvolutionConfig
     synthesis: SynthesisConfig
     eval: EvalConfig
 
@@ -76,6 +121,7 @@ class Config:
             retrieval=RetrievalConfig(**data.get("retrieval", {})),
             adaptive=AdaptiveConfig(**data.get("adaptive", {})),
             verification=VerificationConfig(**data.get("verification", {})),
+            evolution=EvolutionConfig(**data.get("evolution", {})),
             synthesis=SynthesisConfig(**data.get("synthesis", {})),
             eval=EvalConfig(**data.get("eval", {})),
         )
@@ -92,6 +138,7 @@ class Config:
                 retrieval=RetrievalConfig(),
                 adaptive=AdaptiveConfig(),
                 verification=VerificationConfig(),
+                evolution=EvolutionConfig(),
                 synthesis=SynthesisConfig(),
                 eval=EvalConfig(),
             )

@@ -1,11 +1,19 @@
 # Deep Research Agent — OpenRouter Configuration
-# Uses deepseek-r1 (free tier) for all calls — zero cost, strong reasoning.
-# Free models have stricter rate limits and do NOT support JSON response_format,
-# so LLMClient.complete_json falls back to prompt-based JSON extraction.
+# Uses free-tier models for all calls — zero cost.
+#
+# NOTE ON MODEL SLUGS: OpenRouter retires ":free" slugs without notice — the
+# ones originally pinned here (deepseek-r1:free, llama-3.3-70b-instruct:free)
+# now 404 ("unavailable for free, use the paid slug instead"), confirmed by
+# direct API probe on 2026-08-02. If these also go stale, list current free
+# models with:
+#   curl -s https://openrouter.ai/api/v1/models | jq -r '.data[].id' | grep :free
+# Free models have stricter rate limits (a shared account-wide daily cap) and
+# some do NOT support JSON response_format, so LLMClient.complete_json falls
+# back to prompt-based JSON extraction.
 
 llm:
-  sub_step_model: "deepseek/deepseek-r1:free"
-  synthesis_model: "deepseek/deepseek-r1:free"
+  sub_step_model: "google/gemma-4-26b-a4b-it:free"
+  synthesis_model: "google/gemma-4-26b-a4b-it:free"
   temperature: 0.3
   max_tokens: 4000
   base_url: "https://openrouter.ai/api/v1"
@@ -26,8 +34,25 @@ adaptive:
 
 verification:
   enabled: true
-  verifier_model: "deepseek/deepseek-r1:free"
+  verifier_model: "google/gemma-4-26b-a4b-it:free"
   support_threshold: 0.4
+
+evolution:
+  enabled: true
+  # Different MODEL FAMILY from sub_step_model (gemma) on purpose — the
+  # challenger's whole job is to not share the extractor's blind spots.
+  # Verified live via direct API probe on 2026-08-02; swap for any other free
+  # OpenRouter model if this slug is later retired (see note above).
+  challenger_model: "openai/gpt-oss-20b:free"
+  challenger_base_url: ""      # inherits OpenRouter base_url
+  challenger_api_key_env: ""   # inherits OPENROUTER_API_KEY
+  reviser_model: ""
+  # Free models are rate-limited — keep the per-round challenge budget small.
+  max_challenges_per_round: 8
+  stability_rounds: 2
+  nuance_balance_threshold: 0.5
+  reversal_balance_threshold: -0.3
+  reasoning_soundness_threshold: 0.6
 
 synthesis:
   include_gaps: true

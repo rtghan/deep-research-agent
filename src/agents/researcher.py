@@ -51,6 +51,7 @@ def research_sub_question(
                 chunk_overlap=config.retrieval.chunk_overlap,
                 retrieval_round=round_num,
                 chunk_id_prefix=f"{chunk_id_base}_a{i}",
+                sub_question_id=sq.sq_id,
             )
             new_evidence.extend(chunks)
 
@@ -69,6 +70,7 @@ def research_sub_question(
                 chunk_overlap=config.retrieval.chunk_overlap,
                 retrieval_round=round_num,
                 chunk_id_prefix=f"{chunk_id_base}_w{i}",
+                sub_question_id=sq.sq_id,
             )
             new_evidence.extend(chunks)
 

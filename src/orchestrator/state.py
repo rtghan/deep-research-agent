@@ -27,6 +27,40 @@ class EvidenceChunk(BaseModel):
     offset_start: int = 0
     offset_end: int = 0
     retrieval_round: int = 0
+    sub_question_id: Optional[str] = None  # which sub-question retrieved this
+
+
+class ClaimRevision(BaseModel):
+    """
+    One step in a claim's evolution — what changed, why, and what it did to
+    the claim's grounding.
+
+    The revision log is what makes claim evolution auditable: you can replay a
+    claim from v1 to vN and see which round's evidence forced each change and
+    whether the change actually improved the claim's support.
+    """
+    version: int                      # the version this revision PRODUCED
+    round_num: int                    # retrieval round that triggered it
+    operation: str                    # keep|refine|narrow|reverse|retract|split
+    prev_text: str
+    new_text: str
+    rationale: str                    # challenger's critique, condensed
+    flaws: list[str] = Field(default_factory=list)
+    evidence_balance: float = 0.0     # +1 all-supporting … -1 all-refuting
+    support_before: Optional[float] = None
+    support_after: Optional[float] = None
+    reasoning_before: Optional[float] = None
+    reasoning_after: Optional[float] = None
+    challenger_model: str = ""
+
+    # --- Independent quality judgement (TESTING.md, 2026-08 evaluation) ---
+    # support_after - support_before conflates "got more accurate" with "got
+    # harder to fully entail" — a hedged, nuanced claim scores lower on strict
+    # entailment even when it is a better reflection of the evidence. The judge
+    # is a second, structurally different signal: a blind pairwise comparison
+    # of before vs. after text, unaware which one is "the revision".
+    judge_verdict: Optional[str] = None   # improved|worse|same|uncertain
+    judge_rationale: str = ""
 
 
 class Claim(BaseModel):
@@ -38,6 +72,22 @@ class Claim(BaseModel):
     verification_status: Optional[str] = None  # "supported"|"contradicted"|"insufficient"
     confidence: Optional[float] = None  # calibrated confidence
     sub_question_id: Optional[str] = None
+
+    # --- Claim evolution (challenger → reviser loop) ---
+    version: int = 1
+    status: str = "active"            # active|superseded|retracted
+    original_text: Optional[str] = None  # text at v1, for before/after inspection
+    reasoning_score: Optional[float] = None  # is the claim WARRANTED by evidence?
+    evidence_balance: Optional[float] = None  # source-weighted support vs. refutation
+    refuting_evidence_ids: list[str] = Field(default_factory=list)
+    flaws: list[str] = Field(default_factory=list)  # from the latest challenge
+    revisions: list[ClaimRevision] = Field(default_factory=list)
+    challenges_survived: int = 0      # consecutive "keep" verdicts
+    frozen: bool = False              # stable — stop paying to re-challenge it
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == "active"
 
 
 class SubQuestion(BaseModel):
@@ -56,6 +106,41 @@ class ResearchPlan(BaseModel):
     query: str
     sub_questions: list[SubQuestion] = Field(default_factory=list)
     clarified_query: Optional[str] = None
+
+
+class ChallengeRecord(BaseModel):
+    """
+    One adversarial challenge against a claim — logged whether or not it led
+    to a revision.
+
+    Keeping the "sound" verdicts (challenges that did NOT land) is what lets us
+    measure self-agreement bias: run the same evidence past a challenger that
+    shares the extractor's model vs. one that doesn't and compare how often each
+    finds anything wrong.
+    """
+    claim_id: str
+    round_num: int
+    claim_version: int
+    verdict: str                      # sound|needs_nuance|needs_reversal|unsupported
+    reasoning_score: float = 0.5
+    evidence_balance: float = 0.0
+    flaws: list[str] = Field(default_factory=list)
+    critique: str = ""
+    n_supporting_sources: int = 0
+    n_refuting_sources: int = 0
+    led_to_revision: bool = False
+    challenger_model: str = ""
+    # The specific metric/aspect the challenger says is in dispute (e.g.
+    # "instruction-following accuracy", not "open-ended generalization").
+    # Logged for auditability of the 2026-08 metric-conflation finding
+    # (TESTING.md) — a reversal citing evidence about a DIFFERENT dimension
+    # than the claim is a red flag visible directly in the trace.
+    contested_dimension: str = ""
+    # Verbatim quotes the challenger cited as refuting evidence, after
+    # dropping any that didn't actually appear in the cited chunk (see
+    # challenger.py: quote-grounding rejects "silence implies refutation").
+    refuting_quotes: list[str] = Field(default_factory=list)
+    dropped_ungrounded_refutations: int = 0
 
 
 class Contradiction(BaseModel):
@@ -85,6 +170,7 @@ class ResearchState(BaseModel):
     plan: Optional[ResearchPlan] = None
     evidence: list[EvidenceChunk] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
+    challenges: list[ChallengeRecord] = Field(default_factory=list)
     contradictions: list[Contradiction] = Field(default_factory=list)
     report: Optional[str] = None
     trace: list[TraceEntry] = Field(default_factory=list)

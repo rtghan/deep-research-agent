@@ -39,6 +39,33 @@ verification:
   # Entailment threshold: claims below this support score are "insufficient"
   support_threshold: 0.4
 
+evolution:
+  # Claims are challenged and revised as evidence accumulates, instead of
+  # being append-only. See DECISIONS.md D020/D021.
+  enabled: true
+  # The challenger is ADVERSARIAL and deliberately a different model from
+  # sub_step_model (which extracts the claims it attacks). Same model =
+  # self-agreement bias; that configuration is the `evolution_self` ablation.
+  challenger_model: "gpt-4o"
+  # Optional: point the challenger at a different provider entirely for full
+  # independence. Empty = inherit llm.base_url / llm.api_key_env.
+  challenger_base_url: ""
+  challenger_api_key_env: ""
+  # Reviser rewrites the claim; empty = use sub_step_model.
+  reviser_model: ""
+  # Cost cap per round — lowest-confidence claims are challenged first.
+  max_challenges_per_round: 12
+  # A claim that survives this many consecutive challenges unchanged is frozen.
+  stability_rounds: 2
+  # Evidence balance gates: (sup_sources - ref_sources) / (sup + ref sources)
+  # Above this, the claim stands as-is; below it, refuting evidence is real
+  # enough to require a scope qualifier.
+  nuance_balance_threshold: 0.5
+  # Below this, refuting evidence is DOMINANT — flip the claim's position.
+  reversal_balance_threshold: -0.3
+  # Below this, the inference itself is unsound even if the evidence agrees.
+  reasoning_soundness_threshold: 0.6
+
 synthesis:
   # Include a "Known Gaps & Contradictions" section in reports
   include_gaps: true

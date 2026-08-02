@@ -38,6 +38,12 @@ class MockLLMClient:
             return self._mock_verification(user), LLMResponse(text="{}", input_tokens=150, output_tokens=100, latency_ms=35.0)
         elif "contradiction detector" in system.lower():
             return self._mock_contradictions(user), LLMResponse(text="{}", input_tokens=200, output_tokens=100, latency_ms=35.0)
+        elif "adversarial reviewer" in system.lower():
+            return self._mock_challenge(user), LLMResponse(text="{}", input_tokens=400, output_tokens=150, latency_ms=45.0)
+        elif "revise research claims" in system.lower():
+            return self._mock_revision(user), LLMResponse(text="{}", input_tokens=400, output_tokens=200, latency_ms=45.0)
+        elif "comparing two versions" in system.lower():
+            return self._mock_judge(user), LLMResponse(text="{}", input_tokens=300, output_tokens=60, latency_ms=30.0)
         else:
             return {"result": "mock"}, LLMResponse(text="{}", input_tokens=50, output_tokens=50, latency_ms=20.0)
 
@@ -62,8 +68,12 @@ class MockLLMClient:
         return {"claims": claims}
 
     def _mock_verification(self, user: str) -> dict:
-        # Deterministic support score based on claim text hash
-        score = 0.6 + (hash(user) % 40) / 100.0
+        # Deterministic support score based on claim text hash.
+        # Uses _stable_hash, not the builtin hash(): hash() is salted per
+        # interpreter for str, so mock runs were not actually reproducible
+        # across processes — which silently made mock ablation runs
+        # incomparable to each other.
+        score = 0.6 + (self._stable_hash(user) % 40) / 100.0
         score = max(0.1, min(0.95, score))
         status = "supported" if score >= 0.5 else "insufficient"
         return {
@@ -77,6 +87,150 @@ class MockLLMClient:
         if "contradict" in user.lower() or len(user) > 500:
             return {"contradictions": [{"claim_a_idx": 0, "claim_b_idx": 1, "description": "Mock: Source A claims improvement while Source B reports no significant change."}]}
         return {"contradictions": []}
+
+    @staticmethod
+    def _stable_hash(text: str) -> int:
+        """
+        Deterministic across processes, unlike the builtin hash() for str, which
+        is salted per-interpreter by PYTHONHASHSEED.
+        """
+        return int(hashlib.md5(text.encode("utf-8")).hexdigest()[:8], 16)
+
+    @staticmethod
+    def _count_evidence(user: str) -> int:
+        return max(1, user.count("--- Evidence ["))
+
+    @staticmethod
+    def _extract_evidence_texts(user: str) -> list[str]:
+        """
+        Pull each evidence chunk's body text back out of the rendered prompt, so
+        the mock challenger can quote REAL text — matching the quote-grounding
+        validation in challenger.py, which drops any refuting claim whose quote
+        isn't an actual substring of the cited chunk.
+        """
+        import re
+        blocks = re.split(r"--- Evidence \[\d+\][^\n]*---\n", user)[1:]
+        return [b.split("\n\n")[0].split("\n---")[0].strip() for b in blocks]
+
+    @staticmethod
+    def _extract_claim_text(user: str) -> str:
+        for line in user.splitlines():
+            if line.startswith("Claim (version"):
+                return line.split(":", 1)[-1].strip()
+            if line.startswith("Claim:"):
+                return line.split(":", 1)[-1].strip()
+        return user[:200]
+
+    def _mock_challenge(self, user: str) -> dict:
+        """
+        Deterministic adversarial verdicts, spread across all four outcomes so
+        that every branch of the evolution router is exercised in mock runs —
+        including reversal and retraction, which real evidence produces rarely.
+
+        Refuting entries carry a real substring of the cited chunk's text, so
+        they survive challenger.py's quote-grounding check the same way a
+        genuine model's grounded refutation would.
+        """
+        claim_text = self._extract_claim_text(user)
+        n_ev = self._count_evidence(user)
+        texts = self._extract_evidence_texts(user)
+        bucket = self._stable_hash(claim_text) % 10
+        all_idx = list(range(min(n_ev, 6)))
+
+        def _quote_for(idx: int) -> str:
+            if idx < len(texts) and texts[idx]:
+                words = texts[idx].split()
+                return " ".join(words[: min(8, len(words))]) or texts[idx][:40]
+            return "evidence"
+
+        def _refuting(indices: list[int]) -> list[dict]:
+            return [{"index": i, "quote": _quote_for(i)} for i in indices]
+
+        if bucket <= 4:  # 50% — claim stands
+            return {
+                "reasoning_score": 0.75 + (bucket / 100.0),
+                "flaws": [],
+                "contested_dimension": "",
+                "supporting_evidence_indices": all_idx,
+                "refuting_evidence": [],
+                "verdict": "sound",
+                "critique": "Mock challenge: the claim is warranted by the evidence pool.",
+            }
+        if bucket <= 6:  # 20% — minority dissent → nuance
+            return {
+                "reasoning_score": 0.55,
+                "flaws": ["overgeneralization"],
+                "contested_dimension": "scope of applicability",
+                "supporting_evidence_indices": all_idx[:-1] or all_idx,
+                "refuting_evidence": _refuting(all_idx[-1:]),
+                "verdict": "needs_nuance",
+                "critique": "Mock challenge: holds on the reported benchmark but is stated without scope.",
+            }
+        if bucket <= 8:  # 20% — dissent dominates → reversal
+            return {
+                "reasoning_score": 0.3,
+                "flaws": ["cherry_picked", "scope_error"],
+                "contested_dimension": "overall effect direction",
+                "supporting_evidence_indices": all_idx[:1],
+                "refuting_evidence": _refuting(all_idx[1:] or all_idx),
+                "verdict": "needs_reversal",
+                "critique": "Mock challenge: most sources in the pool report the opposite result.",
+            }
+        return {  # 10% — unsalvageable
+            "reasoning_score": 0.15,
+            "flaws": ["unsupported_causality"],
+            "contested_dimension": "causal claim",
+            "supporting_evidence_indices": [],
+            "refuting_evidence": _refuting(all_idx),
+            "verdict": "unsupported",
+            "critique": "Mock challenge: the evidence does not license this claim at all.",
+        }
+
+    def _mock_revision(self, user: str) -> dict:
+        """Perform the operation the router asked for, deterministically."""
+        operation = "refine"
+        for line in user.splitlines():
+            if line.startswith("OPERATION TO PERFORM:"):
+                operation = line.split(":", 1)[-1].strip()
+                break
+
+        claim_text = self._extract_claim_text(user)
+        n_ev = self._count_evidence(user)
+        indices = list(range(min(n_ev, 3)))
+
+        if operation == "retract":
+            return {"operation": "retract", "revised_text": "",
+                    "evidence_indices": [], "rationale": "Mock: evidence does not license the claim."}
+        if operation == "narrow":
+            revised = f"{claim_text.rstrip('.')}, though this holds only on the benchmarks reported and one source finds no significant effect."
+            rationale = "Mock: scoped to the reported conditions after minority refuting evidence."
+        elif operation == "reverse":
+            revised = f"Contrary to the earlier reading of the evidence, the majority of sources find the opposite: {claim_text.rstrip('.').lower()} does not hold once compute is controlled for."
+            rationale = "Mock: refuting evidence became dominant, position flipped."
+        else:  # refine
+            revised = f"{claim_text.rstrip('.')} (measured on the specific benchmark reported, not in general)."
+            rationale = "Mock: tightened an overgeneralized inference."
+
+        return {
+            "operation": operation,
+            "revised_text": revised,
+            "evidence_indices": indices,
+            "rationale": rationale,
+        }
+
+    def _mock_judge(self, user: str) -> dict:
+        """
+        Deterministic pairwise verdict. Slightly favors whichever label is
+        longer, as a stand-in for "the more specific/qualified claim" — not
+        meaningful as a quality signal, just deterministic for testing.
+        """
+        a = user.split("Claim A:")[-1].split("Claim B:")[0].strip()
+        b = user.split("Claim B:")[-1].split("Evidence pool:")[0].strip()
+        bucket = self._stable_hash(a + b) % 5
+        if bucket == 0:
+            return {"better": "equivalent", "reasoning": "Mock judge: no meaningful difference."}
+        better = "A" if len(a) >= len(b) else "B"
+        return {"better": better, "reasoning": "Mock judge: deterministic pairwise pick."}
 
     def _generate_report(self, user: str) -> str:
         return """# Research Report
