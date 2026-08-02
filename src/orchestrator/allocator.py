@@ -1,15 +1,15 @@
 """
-Adaptive Compute Allocator (Track A) — budgets retrieval rounds per sub-question.
+Adaptive Compute Allocator — budgets retrieval rounds per sub-question.
 
 Design decision: the allocator maps difficulty → compute budget.
 - Easy sub-questions get min_budget rounds (1)
 - Hard sub-questions get max_budget rounds (4)
 - Linear interpolation in between
 
-The feedback loop (Track A ↔ Track B):
+The feedback loop:
 1. Initial difficulty estimate (linguistic) → initial budget
 2. After round 1, extractor + verifier produce confidence scores
-3. Difficulty is updated using confidence (Track B signal)
+3. Difficulty is updated using confidence
 4. If confidence is still low, allocate additional rounds (up to max_budget)
 5. Each additional round brings new evidence → re-extract → re-verify
 

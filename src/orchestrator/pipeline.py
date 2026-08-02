@@ -1,17 +1,17 @@
 """
 Pipeline orchestrator — the main entry point that runs the full research agent.
 
-This is the A+B hybrid pipeline:
+This is the pipeline:
 1. Planner: decompose query → sub-questions
 2. For each sub-question:
-   a. Difficulty estimator: estimate difficulty (Track A)
-   b. Allocator: assign compute budget (Track A)
+   a. Difficulty estimator: estimate difficulty
+   b. Allocator: assign compute budget
    c. Researcher: run retrieval rounds (up to budget)
    d. Extractor: extract claims from evidence
-   e. Verifier: verify claims against evidence (Track B)
-   f. Confidence scorer: assign calibrated confidence (Track B)
+   e. Verifier: verify claims against evidence
+   f. Confidence scorer: assign calibrated confidence
    g. Allocator feedback: if confidence low and budget allows, loop back to (c)
-3. Verifier: detect cross-source contradictions (Track B)
+3. Verifier: detect cross-source contradictions
 4. Synthesizer: produce final report with confidence scores
 
 The adaptive vs. uniform ablation is controlled by config.adaptive.enabled.
@@ -102,14 +102,14 @@ def run_research(
             new_claims = extract_claims(state, sq, new_evidence, sub_llm, config)
 
             if new_claims:
-                # Track B: verify and score
+                # Verify and score
                 verify_claims(state, new_claims, sub_llm, config)
                 score_confidence(state, new_claims, config)
 
-                # Track A: update difficulty based on confidence
+                # Update difficulty based on confidence
                 update_difficulty(state, sq, new_claims, config)
 
-                # Track A: feedback loop — should we continue?
+                # Feedback loop — should we continue?
                 if config.adaptive.enabled:
                     if not should_continue(state, sq, new_claims, config):
                         break  # confidence is high enough, stop spending compute

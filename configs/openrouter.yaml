@@ -1,0 +1,37 @@
+# Deep Research Agent — OpenRouter Configuration
+# Uses deepseek-r1 (free tier) for all calls — zero cost, strong reasoning.
+# Free models have stricter rate limits and do NOT support JSON response_format,
+# so LLMClient.complete_json falls back to prompt-based JSON extraction.
+
+llm:
+  sub_step_model: "deepseek/deepseek-r1:free"
+  synthesis_model: "deepseek/deepseek-r1:free"
+  temperature: 0.3
+  max_tokens: 4000
+  base_url: "https://openrouter.ai/api/v1"
+  api_key_env: "OPENROUTER_API_KEY"
+
+retrieval:
+  search_results_per_query: 5
+  max_rounds: 3
+  chunk_size: 1500
+  chunk_overlap: 200
+
+adaptive:
+  enabled: true
+  min_budget: 1
+  max_budget: 4
+  low_confidence_threshold: 0.5
+  novelty_threshold: 0.15
+
+verification:
+  enabled: true
+  verifier_model: "deepseek/deepseek-r1:free"
+  support_threshold: 0.4
+
+synthesis:
+  include_gaps: true
+  output_format: "markdown"
+
+eval:
+  calibration_bins: 10

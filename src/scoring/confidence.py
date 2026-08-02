@@ -1,5 +1,5 @@
 """
-Confidence Scorer (Track B) — calibrates per-claim confidence.
+Confidence Scorer — calibrates per-claim confidence.
 
 Design decision: confidence is NOT just the support score. It's a composite
 that accounts for:

@@ -1,7 +1,7 @@
 """
-Difficulty Estimator (Track A) — estimates how hard a sub-question is.
+Difficulty Estimator — estimates how hard a sub-question is.
 
-This is the core of Track A: "not all work is equally hard." Before running
+Before running
 retrieval, we estimate each sub-question's difficulty to allocate compute.
 
 Design decision: difficulty is estimated from TWO signals:
@@ -13,9 +13,6 @@ Design decision: difficulty is estimated from TWO signals:
 The two-phase approach:
 - Phase 1 (pre-retrieval): linguistic estimate only (cheap, no API call)
 - Phase 2 (post-retrieval): update with verifier confidence (grounded signal)
-
-This is where Track A and Track B reinforce each other:
-Track B's verifier confidence IS Track A's difficulty signal.
 """
 
 from __future__ import annotations

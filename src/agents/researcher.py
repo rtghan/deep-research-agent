@@ -6,7 +6,7 @@ Design decision: the researcher runs retrieval rounds. In each round it:
 2. Chunks the retrieved text into evidence pieces with provenance
 3. Appends evidence to state
 
-The number of rounds is controlled by the adaptive allocator (Track A).
+The number of rounds is controlled by the adaptive allocator.
 In uniform mode, every sub-question gets the same budget.
 In adaptive mode, harder sub-questions get more rounds.
 

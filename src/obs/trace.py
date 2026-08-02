@@ -1,9 +1,5 @@
 """
 Structured JSONL tracing — every component logs inputs/outputs/latency/cost.
-
-Why: the brief asks "debug a multi-agent workflow when something went wrong
-three steps ago." A JSONL trace makes every step replayable and inspectable.
-This is cheap to build and high-signal for the failure log.
 """
 
 import json

@@ -1,0 +1,50 @@
+# Deep Research Agent — Default Configuration
+# Every knob here maps to a design decision documented in DECISIONS.md
+
+llm:
+  # Sub-step model: cheap, fast, good enough for extraction/verification
+  sub_step_model: "gpt-4o-mini"
+  # Synthesis model: stronger, for final report generation
+  synthesis_model: "gpt-4o"
+  temperature: 0.3
+  max_tokens: 2000
+
+retrieval:
+  # Number of search results per sub-question per round
+  search_results_per_query: 5
+  # Maximum retrieval rounds (adaptive allocator may use fewer)
+  max_rounds: 3
+  # Chunk size for splitting retrieved text (characters)
+  chunk_size: 1500
+  # Overlap between chunks (characters)
+  chunk_overlap: 200
+
+adaptive:
+  # Track A: adaptive test-time compute
+  enabled: true
+  # Minimum compute budget (retrieval rounds) for any sub-question
+  min_budget: 1
+  # Maximum compute budget for hard sub-questions
+  max_budget: 4
+  # Confidence threshold below which extra rounds are triggered
+  low_confidence_threshold: 0.5
+  # How much novelty (new claims) justifies another round
+  novelty_threshold: 0.15
+
+verification:
+  # Track B: evidence-grounded verification
+  enabled: true
+  # Model for verification (use different model to avoid self-agreement bias)
+  verifier_model: "gpt-4o-mini"
+  # Entailment threshold: claims below this support score are "insufficient"
+  support_threshold: 0.4
+
+synthesis:
+  # Include a "Known Gaps & Contradictions" section in reports
+  include_gaps: true
+  # Output format: "markdown" or "json"
+  output_format: "markdown"
+
+eval:
+  # Number of confidence bins for reliability diagram
+  calibration_bins: 10

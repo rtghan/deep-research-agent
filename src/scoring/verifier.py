@@ -1,23 +1,23 @@
 """
-Verifier (Track B) — checks each claim's support against its evidence.
+Verifier — checks each claim's support against its evidence.
 
-This is the heart of Track B. For each claim, the verifier:
+For each claim, the verifier:
 1. Reads the claim text
 2. Reads the linked evidence chunks
 3. Assesses: is this claim supported, contradicted, or insufficient?
 4. Assigns a support score (0.0 = contradicted, 1.0 = fully supported)
 
-Design decision: use a DIFFERENT model for verification than extraction
+Should use a DIFFERENT model for verification than extraction
 (verifier_model vs. sub_step_model). This avoids the self-agreement bias
 where the same model that generated a claim tends to agree with itself.
 
 The support score feeds two things:
-- Track B: the confidence scorer uses it for calibration
-- Track A: the allocator uses it as a difficulty signal (low support = hard)
+- the confidence scorer uses it for calibration
+- the allocator uses it as a difficulty signal (low support = hard)
 
 Cross-source contradiction detection: the verifier also checks claims
 against evidence from DIFFERENT sources, flagging when Source A's evidence
-contradicts Source B's claim. This is the contradiction map for Example 2.
+contradicts Source B's claim.
 """
 
 from __future__ import annotations

@@ -1,11 +1,11 @@
 """
 Synthesizer — produces a structured research report from verified claims.
 
-Design decision: the synthesizer does NOT generate new content from scratch.
+The synthesizer does NOT generate new content from scratch.
 It organizes and presents the claims that survived verification, grouped by
 sub-question, with confidence scores and source citations visible.
 
-This is critical for Track B: the report makes the confidence and evidence
+The report makes the confidence and evidence
 visible to the reader. A claim with 60% confidence is shown as such, not
 presented as certain.
 
