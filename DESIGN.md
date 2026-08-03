@@ -12,7 +12,7 @@ system that never revisits its own conclusions will confidently report the first
 it found and stop.
 
 So the central commitment is that claims are mutable objects with a revision history, rather than
-immutable outputs of an extraction step. Everything below follows from that.
+immutable outputs of an extraction step. 
 
 ### 1.1 Assumptions
 
@@ -23,7 +23,7 @@ immutable outputs of an extraction step. Everything below follows from that.
 | A3 | Users act on the output, so a confidently-wrong claim costs more than a hedged-correct one |
 | A4 | LLM calls and compute should be carefully allocated |
 | A5 | Retrieved content is untrusted input |
-| A6 | The model won't reliably follow instructions that must *always* hold |
+| A6 | The model won't reliably follow instructions that must always hold |
 
 ---
 
@@ -72,8 +72,8 @@ Changing a claim's position requires evidence dominance rather than a critic's i
 balance = (supporting_sources − refuting_sources) / (supporting_sources + refuting_sources)
 ```
 
-Counting distinct sources rather than chunks is load-bearing. One paper chopped into forty chunks
-shouldn't outvote three papers that disagree with it. Thresholds on that number pick between
+We count distinct sources rather than chunks. One paper chopped into forty chunks
+shouldn't outweigh three papers that disagree with it. Thresholds on that number pick between
 `keep`, `refine`, `narrow`, `reverse` and `retract`. An aggressive critic can't flip a well-supported
 claim by being loud, and the reason any claim reversed is a number that can be seen in the trace.
 
@@ -84,22 +84,7 @@ configuration that implies more tuning capability than it has.
 
 ### 2.4 Serial and parallel execution
 
-Sub-questions share no state, so they can run concurrently. For a while they didn't, and that cost
-us more than anything else in the project: a 7-case evaluation sweep took about 2.3 hours and an
-earlier one about 12, nearly all of it spent waiting on sequential HTTP requests. Every experiment
-was gated on that wait.
-
-Both modes now exist and produce the same results. Serial is the default; parallel is opt-in via
-`execution.parallel_sub_questions` or `--parallel`, and `--serial` forces the default back
-regardless of config. On the same query with 3 sub-questions and 4 workers:
-
-| | wall | claims | unique IDs | evidence | tokens |
-|---|---|---|---|---|---|
-| serial | 9.3s | 9 | 9 | 233 | 20740 |
-| parallel | 5.5s | 9 | 9 | 233 | 20740 |
-
-Identical output at 1.68× the speed. The matching token counts are the useful part of that table:
-accumulating tokens is a read-modify-write, so an unlocked version would have quietly undercounted.
+Sub-questions share no state, so they can run concurrently. We initially tested without so that the trace of the process was easier to observe, though that cost a lot of time, causing experiments to be blocked on wait.
 
 Three things had to change before this was safe.
 
@@ -121,12 +106,6 @@ and flushes them as one block when its sub-question finishes.
 The scheduler strategy is excluded from all of this. It re-ranks after every round to decide where
 the next one goes, so it can't be fanned out without giving up the adaptivity that justifies it.
 The pipeline detects that and runs it serially instead of silently degrading it.
-
-What's still missing: retries aren't budgeted globally, so a heavily throttled run can take
-arbitrarily long rather than failing fast; `max_workers` is fixed rather than backing off when a
-provider starts throttling; and harness-level parallelism multiplies with pipeline-level
-parallelism, so `--eval --parallel` can issue `max_case_workers × max_workers` concurrent requests
-with no single semaphore bounding the total.
 
 ---
 
