@@ -166,6 +166,14 @@ class ExecutionConfig:
     # The planner asks for 3-5 sub-questions and each one costs a full research
     # loop, so this is the largest single lever on wall-clock and spend.
     max_sub_questions: int = 0
+    # Claim-level concurrency. Verification and the challenge/revise loop both
+    # iterate claims one at a time, and together they are ~83% of all LLM
+    # latency (challenger 35%, verifier 24%, judge 15%, reviser 9%). Each claim
+    # is independent -- it reads a shared evidence pool and writes only to
+    # itself -- so this is the largest remaining speedup and it composes with
+    # sub-question parallelism.
+    parallel_claims: bool = False
+    max_claim_workers: int = 8
 
 
 @dataclass

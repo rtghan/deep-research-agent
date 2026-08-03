@@ -23,6 +23,7 @@ contradicts Source B's claim.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from src.obs.trace import Timer, log_step
 from src.orchestrator.config import Config
@@ -74,7 +75,7 @@ def verify_claims(
 
     evidence_map = {c.chunk_id: c for c in state.evidence}
 
-    for claim in claims:
+    def _verify_one(claim: Claim) -> None:
         evidence_context = _build_evidence_context(claim, evidence_map)
 
         with Timer() as timer:
@@ -100,6 +101,17 @@ def verify_claims(
             cost_tokens=resp.total_tokens,
             metadata={"claim_id": claim.claim_id, "support_score": claim.support_score},
         )
+
+    # Each claim is scored independently and writes only to itself, so this
+    # loop parallelises cleanly. It is ~24% of total LLM latency.
+    workers = getattr(getattr(config, "execution", None), "max_claim_workers", 0)
+    if (getattr(getattr(config, "execution", None), "parallel_claims", False)
+            and len(claims) > 1 and workers > 1):
+        with ThreadPoolExecutor(max_workers=min(workers, len(claims))) as pool:
+            list(pool.map(_verify_one, claims))
+    else:
+        for claim in claims:
+            _verify_one(claim)
 
 
 def detect_contradictions(

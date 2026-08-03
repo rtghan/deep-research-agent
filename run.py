@@ -60,6 +60,22 @@ def _load_config(args):
         cfg.execution.max_workers = args.workers
         cfg.execution.max_case_workers = args.workers
 
+    if getattr(args, "fast", False):
+        # Everything that reduces wall-clock for a single real question, at the
+        # cost of money and breadth. Concurrency at both levels is the main
+        # lever: claim-level covers ~83% of LLM latency, sub-question level the
+        # rest. Fast models matter second -- the slow challenger dominated.
+        cfg.execution.parallel_sub_questions = True
+        cfg.execution.max_workers = 5
+        cfg.execution.parallel_claims = True
+        cfg.execution.max_claim_workers = 10
+        cfg.retrieval.fetch_fulltext = False   # PDF downloads are invisible in the trace and huge
+        cfg.retrieval.search_results_per_query = 3
+        cfg.evolution.judge_revisions = False  # 15% of LLM time, invisible on stage
+        cfg.report_correction.max_passes = 1
+        cfg.adaptive.enabled = False
+        cfg.adaptive.max_budget = 2
+
     if getattr(args, "demo_live", False):
         # Tuned so a real run finishes inside a demo slot while still showing
         # every behaviour worth showing: reformulation on round 2, a full
@@ -106,6 +122,8 @@ def main():
                         help="Replay speed multiplier (default 6)")
     parser.add_argument("--pause-at", default=None, metavar="COMPONENT[/STEP]",
                         help="Pause replay at a step, e.g. evolution/evolve")
+    parser.add_argument("--fast", action="store_true",
+                        help="Maximum concurrency + fast models for one real question")
     parser.add_argument("--demo-live", action="store_true",
                         help="Live run tuned to finish inside a demo slot")
     args = parser.parse_args()

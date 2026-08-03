@@ -65,6 +65,7 @@ support_lift).
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 
 from src.agents.challenger import challenge_claim
 from src.agents.reviser import revise_claim
@@ -282,7 +283,17 @@ def evolve_claims(
     if not targets:
         return summary
 
-    for claim in targets:
+    def _process(claim: Claim) -> dict:
+        """
+        Challenge, route, revise and re-verify one claim.
+
+        Returns a counter dict rather than mutating `summary` directly: `+=` on
+        shared dict entries is a read-modify-write and would lose updates when
+        claims are processed concurrently. Everything else this touches is
+        either the claim itself or an atomic list append.
+        """
+        local = {"challenged": 0, "keep": 0, "refine": 0, "narrow": 0,
+                 "reverse": 0, "retract": 0, "changed": 0, "stalemate": 0}
         # Per-claim selection: the cited chunks differ per claim, so the sample
         # must be rebuilt for each one rather than shared across the pass.
         claim_pool = select_challenge_evidence(pool, claim, config)
@@ -290,7 +301,7 @@ def evolve_claims(
         challenge = challenge_claim(
             state, claim, claim_pool, challenger_llm, config, round_num=round_num
         )
-        summary["challenged"] += 1
+        local["challenged"] += 1
 
         operation = route_operation(challenge, config)
 
@@ -325,7 +336,7 @@ def evolve_claims(
         claim.flaws = challenge.flaws
 
         if operation == "keep":
-            summary["keep"] += 1
+            local["keep"] += 1
             claim.challenges_survived += 1
             # A declared stalemate is not the same as surviving scrutiny: the
             # challenger still objects, it just recognises that acting on the
@@ -335,7 +346,7 @@ def evolve_claims(
             if challenge.contested_stalemate:
                 claim.oscillating = True
                 claim.frozen = True
-                summary["stalemate"] = summary.get("stalemate", 0) + 1
+                local["stalemate"] += 1
                 log_step(
                     state, component="evolution", step="stalemate_declared",
                     input_summary=f"{claim.claim_id} v{claim.version}",
@@ -348,7 +359,7 @@ def evolve_claims(
                 )
             elif claim.challenges_survived >= config.evolution.stability_rounds:
                 claim.frozen = True
-            continue
+            return local
 
         # A claim that changes is no longer stable, whatever its history.
         claim.challenges_survived = 0
@@ -382,16 +393,16 @@ def evolve_claims(
                 reasoning_after=None,
                 challenger_model=challenge.challenger_model,
             ))
-            summary["retract"] += 1
-            summary["changed"] += 1
-            continue
+            local["retract"] += 1
+            local["changed"] += 1
+            return local
 
         if not revision.changed:
             # The reviser was asked to change the claim and returned the same
             # text. Treat it as a survived challenge rather than a silent no-op.
-            summary["keep"] += 1
+            local["keep"] += 1
             claim.challenges_survived += 1
-            continue
+            return local
 
         if claim.original_text is None:
             claim.original_text = prev_text
@@ -458,8 +469,26 @@ def evolve_claims(
             judge_rationale=judge_rationale,
         ))
 
-        summary[revision.operation] = summary.get(revision.operation, 0) + 1
-        summary["changed"] += 1
+        local[revision.operation] = local.get(revision.operation, 0) + 1
+        local["changed"] += 1
+        return local
+
+    # The challenge/revise/re-verify cycle is the single most expensive thing
+    # the pipeline does -- challenger, judge and reviser together are ~59% of
+    # all LLM latency, and each claim is independent of the others.
+    ec = getattr(config, "execution", None)
+    workers = getattr(ec, "max_claim_workers", 0) if ec else 0
+    if getattr(ec, "parallel_claims", False) and len(targets) > 1 and workers > 1:
+        with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as pool_ex:
+            results = list(pool_ex.map(_process, targets))
+    else:
+        results = [_process(c) for c in targets]
+
+    for r in results:
+        if not r:
+            continue
+        for k, v in r.items():
+            summary[k] = summary.get(k, 0) + v
 
     log_step(
         state,
