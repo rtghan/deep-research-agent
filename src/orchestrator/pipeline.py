@@ -120,6 +120,13 @@ def run_research(
     if not state.plan or not state.plan.sub_questions:
         state.report = "# Research Report\n\nFailed to decompose query into sub-questions."
         return state
+    cap = getattr(config.execution, "max_sub_questions", 0)
+    if cap and len(state.plan.sub_questions) > cap:
+        dropped = len(state.plan.sub_questions) - cap
+        state.plan.sub_questions = state.plan.sub_questions[:cap]
+        log_step(state, "pipeline", "trim_plan", f"cap={cap}",
+                 f"kept {cap} sub-questions, dropped {dropped}",
+                 metadata={"cap": cap, "dropped": dropped})
     for sq in state.plan.sub_questions:
         reporter.sub(f"  {sq.sq_id}: {sq.question}")
 

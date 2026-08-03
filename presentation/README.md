@@ -40,3 +40,34 @@ Every figure in the deck traces to a committed artifact under `eval/results/` �
 `strategy_comparison.json`, `capability_vs_architecture.json`.
 
 If a reviewer asks "where does that come from," the answer is a file, not a memory.
+
+## Demo
+
+**Primary: replay a real run.** Deterministic, offline, free, pausable.
+
+```bash
+python run.py --replay outputs/real_reform_report/trace.jsonl --speed 2
+python run.py --replay outputs/real_reform_report/trace.jsonl --speed 2 --pause-at evolution/evolve
+```
+
+That trace is a real `gpt-4o-mini` + `deepseek-chat` run on inference-time compute scaling:
+477 steps, 1.05M tokens, 5 sub-questions, 5 reformulated queries, 10 evolution passes
+(including one at `2 narrow, 4 reverse, 2 retract`), and a report critique that found
+4 defects and revised to v2.
+
+Timing: `--speed 8` ≈ 18s, `--speed 4` ≈ 38s, `--speed 2` ≈ 76s, `--speed 1` ≈ 150s.
+Use 2 and pause on the evolution pass.
+
+Replay is not a recording. Narration is a view over the trace, so replay feeds the *same*
+renderer the *same* events — reconstructing the whole run from `trace.jsonl` alone is itself
+evidence that the trace is a complete record.
+
+**Why not live.** Measured three configurations: a full run is ~17 min; trimmed to 2
+sub-questions with 2 challenges per round and the judge off it is ~9.5 min; also dropping
+PDF fetch for abstracts it is ~7 min. All well past a 5-minute slot, and that is before
+stage variance. The remaining cost is LLM latency, not retrieval — the challenger alone
+averages 4.6s per call.
+
+**Live fallback if pushed:** `python run.py --demo --mock` (~2 min, real retrieval, canned
+model responses), or start `--demo-live` in a second terminal at the beginning of the demo
+section and show its finished output at the end.

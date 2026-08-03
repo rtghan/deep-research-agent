@@ -59,6 +59,24 @@ def _load_config(args):
     if getattr(args, "workers", None):
         cfg.execution.max_workers = args.workers
         cfg.execution.max_case_workers = args.workers
+
+    if getattr(args, "demo_live", False):
+        # Tuned so a real run finishes inside a demo slot while still showing
+        # every behaviour worth showing: reformulation on round 2, a full
+        # evolution pass, and one report-critique cycle. Everything here trades
+        # breadth for wall-clock; it is not the configuration to evaluate with.
+        cfg.execution.parallel_sub_questions = True
+        cfg.execution.max_workers = 4
+        cfg.adaptive.enabled = False        # fixed budget, no early stopping
+        cfg.adaptive.max_budget = 2         # round 2 exists, so reformulation fires
+        cfg.retrieval.search_results_per_query = 2
+        cfg.execution.max_sub_questions = 2   # biggest lever on wall-clock
+        cfg.retrieval.fetch_fulltext = False  # PDF downloads dominate wall-clock
+        cfg.evolution.max_challenges_per_round = 2
+        cfg.evolution.max_evidence_chunks = 6
+        cfg.evolution.judge_revisions = False  # ~2.5s per revision, invisible on stage
+        cfg.report_correction.max_passes = 1
+        cfg.llm.max_tokens = 900
     return cfg
 
 
@@ -82,7 +100,22 @@ def main():
                         help="Force serial execution, overriding the config")
     parser.add_argument("--workers", type=int, default=None,
                         help="Worker count for --parallel (default 4)")
+    parser.add_argument("--replay", metavar="TRACE",
+                        help="Replay a stored trace.jsonl through the live narrator (offline)")
+    parser.add_argument("--speed", type=float, default=6.0,
+                        help="Replay speed multiplier (default 6)")
+    parser.add_argument("--pause-at", default=None, metavar="COMPONENT[/STEP]",
+                        help="Pause replay at a step, e.g. evolution/evolve")
+    parser.add_argument("--demo-live", action="store_true",
+                        help="Live run tuned to finish inside a demo slot")
     args = parser.parse_args()
+
+    if args.replay:
+        from src.obs.progress import enable
+        from src.obs.replay import replay_trace
+        enable(verbose=args.verbose)
+        replay_trace(args.replay, speed=args.speed, pause_at=args.pause_at)
+        return
 
     # Live narration writes to stderr, so `run.py -n "query" > report.md` still
     # produces a clean report on stdout.

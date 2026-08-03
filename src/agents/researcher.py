@@ -26,7 +26,7 @@ from src.orchestrator.state import (
     SubQuestion,
 )
 from src.retrieval.chunker import chunk_text
-from src.tools.arxiv import search_arxiv, fetch_arxiv_content
+from src.tools.arxiv import search_arxiv, fetch_arxiv_content, fetch_arxiv_content_fast
 from src.tools.search import web_search
 
 
@@ -52,8 +52,10 @@ def research_sub_question(
         papers = search_arxiv(query, max_results=search_results_per_query)
 
     chunk_id_base = f"{sq.sq_id}_r{round_num}"
+    fetch = (fetch_arxiv_content if config.retrieval.fetch_fulltext
+             else fetch_arxiv_content_fast)
     for i, paper in enumerate(papers):
-        text = fetch_arxiv_content(paper)
+        text = fetch(paper)
         if text:
             chunks = chunk_text(
                 text=text,

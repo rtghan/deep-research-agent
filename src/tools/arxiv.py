@@ -122,6 +122,11 @@ def fetch_arxiv_fulltext(paper: ArxivPaper, max_pages: int = 30) -> str:
     return paper.abstract
 
 
+def fetch_arxiv_content_fast(paper) -> str:
+    """Abstract only — no PDF download. See RetrievalConfig.fetch_fulltext."""
+    return fetch_arxiv_abstract(paper)
+
+
 def fetch_arxiv_content(paper: ArxivPaper, max_pages: int = 30) -> str:
     """
     Fetch the best available text content for a paper.

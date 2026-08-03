@@ -38,6 +38,12 @@ class RetrievalConfig:
     # angles, which is a large part of why accumulating rounds stops moving
     # confidence.
     reformulate_queries: bool = True
+    # Fetch and parse arXiv PDFs, or stop at abstracts. Full text gives much
+    # richer evidence and is the right default, but each PDF is a download plus
+    # a parse with a 30s timeout, which dominates wall-clock and is invisible in
+    # the trace (the researcher logs latency_ms=0). Abstracts-only is the
+    # difference between a run you can watch and one you can't.
+    fetch_fulltext: bool = True
 
 
 @dataclass
@@ -156,6 +162,10 @@ class ExecutionConfig:
     # state at all — so this is the safest parallelism in the project.
     parallel_test_cases: bool = False
     max_case_workers: int = 3
+    # Trim the plan after decomposition. 0 = keep whatever the planner produced.
+    # The planner asks for 3-5 sub-questions and each one costs a full research
+    # loop, so this is the largest single lever on wall-clock and spend.
+    max_sub_questions: int = 0
 
 
 @dataclass
