@@ -16,13 +16,17 @@ Some of the core concepts behind the design:
 pip install -e .
 cp .env.example .env    # add OPENAI_API_KEY or OPENROUTER_API_KEY
 
-python run.py --demo --mock              # no API key needed
-python run.py --demo --narrate           # watch it work (see below)
+PYTHONPATH=. python tests/test_evolution.py   # 82 offline checks, ~1s, no network, no API key
+python run.py --demo --mock              # full pipeline, no API key   (~2 min)
+python run.py --demo --narrate           # watch it reason (see below) (~5 min)
 python run.py "your research question"
-python run.py --eval                     # 7-test-case evaluation harness
-python run.py --ablation                 # ablations + figures
-PYTHONPATH=. python tests/test_evolution.py   # 82 offline checks, ~1s, no network
+python run.py --eval                     # 7-case evaluation harness   (~2 h, real API)
+python run.py --ablation                 # 5-mode ablation + figures   (hours)
 ```
+
+**Start with the test suite** — it exercises the routing arithmetic, quote-grounding, evidence sampling, oscillation detection, and the report-critic's mechanical tier in about a second, with no network.
+
+⏱️ **Runtimes are long and output is line-buffered.** `--eval` and `--ablation` run the full pipeline once per test case per mode (35 runs for a full ablation) and hit real arXiv/web retrieval *even with `--mock`*, which only mocks the LLM. Pipe through `python -u` if you want to watch progress; otherwise it will look like it has hung when it hasn't.
 
 ## Watching it think (`--narrate`)
 

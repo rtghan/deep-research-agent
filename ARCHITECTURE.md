@@ -102,7 +102,7 @@ deep-research-agent/
 ├── eval/
 │   ├── harness.py               # Runs all test cases, collects metrics
 │   ├── metrics.py               # 4-metric evaluation (support rate, ECE, etc.)
-│   ├── test_cases.py            # 4 stress-test cases
+│   ├── test_cases.py            # 7 stress-test cases
 │   └── visualize.py             # Generates "wow" figures (cost-quality, reliability)
 ├── ablations/
 │   └── run_ablation.py          # 3-mode ablation study (adaptive / uniform / no-verify)
@@ -240,7 +240,7 @@ The **critical feedback loop** is inside Phase 2: verifier confidence (Track B) 
 |------|------|--------------|
 | *(positional query)* | Single query | Runs `run_research(query, config, output_dir)` and prints stats + report preview. |
 | `--demo` | Demo | Uses a built-in query ("How do Transformer architectures compare to RNNs for sequence modeling?") for quick smoke-testing. |
-| `--eval` | Evaluation | Runs `eval.harness.run_eval()` across all 4 test cases. |
+| `--eval` | Evaluation | Runs `eval.harness.run_eval()` across all 7 test cases. |
 | `--ablation` | Ablation | Runs `ablations.run_ablation.run_ablation()` comparing adaptive vs uniform vs no-verify. |
 | `--mock` | Mock LLM | Uses `MockLLMClient` instead of real API calls — no API key needed. Works with any mode. |
 | `--openrouter` | OpenRouter | Selects `configs/openrouter.yaml` (free deepseek-r1:free model). |
@@ -385,7 +385,9 @@ Batch allocation after planning. In uniform mode, all sub-questions get `max_bud
 2. **No training data required.** A learned policy (e.g., a small neural net mapping difficulty → budget) would need training examples, which we don't have. The linear map uses domain knowledge: harder questions get more rounds.
 3. **The feedback loop is where the intelligence lives.** The allocator's initial budget is a crude estimate. The real adaptivity comes from `should_continue`: after each round, confidence is re-estimated, difficulty is updated, and the budget can be extended. This is a *runtime* adaptive policy, not a *static* one.
 
-**What it produced.** The ablation (§15) shows adaptive mode achieves 98% support rate at 31K tokens average, while uniform mode achieves 99% at 110K tokens — a **3.5× cost reduction** for a 1 percentage point quality trade-off. The cost-quality curve (`cost_quality_curve.png`) shows the adaptive point on the efficient frontier: it is not possible to get to 98% quality with fewer tokens using uniform allocation.
+**What it produced.** The ablation (§15) shows adaptive mode achieves 98% support rate at 31K tokens average, while uniform mode achieves 99% at 110K tokens — a **3.5× cost reduction** for a 1 percentage point quality trade-off.
+
+> ⚠️ **Superseded in part — read D036.** That comparison uses the *maximum*-compute baseline (4 rounds on every sub-question). A later run added the *minimum*-compute baseline (1 round each), which D011 had flagged as untested: it reached **100% support on fewer tokens than either adaptive arm**. The claim above holds against max-uniform and fails against min-uniform, so adaptivity is worth paying for only if the alternative is spending maximum everywhere. The sentence originally here — "it is not possible to get to 98% quality with fewer tokens using uniform allocation" — is **false as measured**, and is left struck through rather than deleted because being wrong in a documented, testable way is the point of this log.
 
 **What it did not solve.** The linear policy is not optimal. A truly adaptive system would use a non-linear function (e.g., sigmoid or step function) that sharply increases compute only above a difficulty threshold. The feedback loop also has a limitation: it can only *extend* the budget, not *reduce* it. If the initial estimate is too high (easy question gets budget=3), the system wastes two rounds before the confidence-based early-stop kicks in. A bidirectional policy (extend when confidence is low, stop early when confidence is high) would be more efficient — and is partially implemented via `should_continue`, which does stop early if confidence exceeds the threshold.
 
@@ -751,7 +753,7 @@ Every agent and scoring function calls `log_step()` during execution, producing 
 ## 14. Evaluation: `eval/`
 
 ### `eval/test_cases.py`
-4 stress-test cases designed to probe different capabilities:
+7 stress-test cases designed to probe different capabilities (tc1-tc4 original; tc5-tc7 added later — see eval/test_cases.py for what each stresses):
 
 | ID | Name | Query | Stress test |
 |----|------|-------|-------------|
@@ -800,7 +802,7 @@ Uses matplotlib Agg backend (no display needed).
 ```python
 run_ablation(use_mock, config) → None
 ```
-Runs 3 ablation modes across all 4 test cases:
+Runs 3 ablation modes across all test cases:
 
 | Mode | Config change | What it proves |
 |------|---------------|----------------|
@@ -955,8 +957,8 @@ From `DECISIONS.md` — 14 numbered decisions (D001-D014):
 | D009 | Fixed-size chunking (1500+200) | Simplicity; overlap prevents sentence splits |
 | D010 | Cross-source contradiction only | Same-source claims shouldn't contradict by construction |
 | D011 | Uniform mode = max_budget for all | Fair baseline for ablation |
-| D012 | Adaptive 3.5x more efficient | Key Track A result |
-| D013 | System under-confident (ECE=0.37) | Safer than overconfident; honest about uncertainty |
+| D012 | Adaptive 3.5x more efficient | **Qualified by D036**: true vs the max-compute baseline, false vs min-compute |
+| D013 | System under-confident (ECE=0.37) | **Superseded by D030**: the gap was an arithmetic ceiling (weights summing to 0.8), not model under-confidence |
 | D014 | Verifier is load-bearing | Without it, claim-support = 0% |
 
 ---
