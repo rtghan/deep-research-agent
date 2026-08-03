@@ -141,6 +141,22 @@ class MockLLMClient:
         bucket = self._stable_hash(claim_text) % 10
         all_idx = list(range(min(n_ev, 6)))
 
+        # If the prompt carries a revision history, a deterministic subset
+        # declares a stalemate -- this is what exercises the challenger-memory
+        # branch (D029) in offline/mock runs, where no real model is present to
+        # notice it is about to re-litigate a claim.
+        if "REVISION HISTORY" in user and bucket >= 5:
+            return {
+                "reasoning_score": 0.5,
+                "flaws": ["cherry_picked"],
+                "contested_dimension": "direction of the effect",
+                "supporting_evidence_indices": all_idx[:1],
+                "refuting_evidence": [],
+                "verdict": "needs_nuance",
+                "contested_stalemate": True,
+                "critique": "Mock: objecting again would undo the previous revision; sources genuinely conflict.",
+            }
+
         def _quote_for(idx: int) -> str:
             if idx < len(texts) and texts[idx]:
                 words = texts[idx].split()

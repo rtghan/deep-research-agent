@@ -284,3 +284,25 @@ Design:
 **Verified in mock:** the scheduler allocated **4 / 2 / 2** rounds across three sub-questions (not uniform 3/3/3), with monotonically decreasing marginal values (0.31 → 0.29 → 0.16 → 0.10), and **stopped early with pool unspent** once nothing cleared the floor. One sub-question reached **4 rounds** — against 0-of-35 exceeding 2 under the threshold strategy.
 
 **Not yet done:** no real-model comparison of the two strategies. The Track A "3.5× cheaper" result is currently attributed to difficulty-based allocation and would need re-measuring as convergence-based scheduling before the README claim covers this path. The uniform baseline being reachable as `pool == n_sub_questions` makes that a clean three-way comparison when run.
+
+---
+
+## 16. Challenger memory: the fix that didn't work, and the pattern that did
+
+D028 proposed that oscillation was a **memory** problem — the challenger is stateless across passes, so it can argue a claim back to a wording it abandoned two passes ago without ever knowing. §15's next-step list named this the one research item worth doing.
+
+Built it: the challenge prompt now carries the claim's recent revision history (original wording, each operation, each rationale) plus an explicit escape hatch — *if your objection would return this claim to a wording it already held, set `contested_stalemate` instead*. That verdict routes to `keep`, freezes the claim, and marks it contested. Config-gated (`evolution.challenger_sees_history`) so memory on/off is a controlled A/B on the same frozen-pool harness.
+
+| | memory off | memory on |
+|---|---|---|
+| revisions per pass | [6, 5, 6, 7, 5] = **29** | [6, 5, 6, 5, 5] = **27** |
+| oscillating claims | **6** | **6** |
+| stalemates declared | — | **0 of 60** |
+
+**Refuted.** 29 vs 27 on n=12 is noise; oscillation is byte-identical at 6. Given its own history and an explicit way to say "the evidence doesn't settle this," the challenger used it **zero times in sixty opportunities**. The plumbing was verified separately — `_format_revision_history` renders correctly with revisions present and returns empty when disabled — so this is refusal, not a bug.
+
+**The third instance of one lesson.** Prompting could not enforce: (1) "silence is not refutation" — 22% ungrounded refutations anyway; (2) "emit a confidence marker on every claim" — zero emitted; (3) "declare a stalemate instead of re-litigating" — zero declared. Every time, the property only held once it moved into code. Here the code fix already existed and dominates the prompt fix, which is why the feature still ships: cheap, occasionally helpful, and not load-bearing.
+
+**The more interesting reading.** The challenger's prompt ends *"Do not be agreeable."* We instructed it to always find fault, so a stalemate is a concession against its assigned role. Oscillation may therefore be a **role failure rather than a memory failure** — an agent told to find what's wrong will find something wrong, forever. Testable by softening the adversarial framing and re-running the same harness; not done.
+
+*(Harness caution, second occurrence: the script's auto-printed verdict read "reduces churn modestly; partially a memory problem" — purely an artifact of a hard-coded threshold falling through to a middle branch. The table is the reading. Both convergence scripts have now produced a summary line more confident than its own data, which is its own small lesson about generated conclusions.)*

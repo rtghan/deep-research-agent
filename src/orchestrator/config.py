@@ -119,6 +119,17 @@ class EvolutionConfig:
     # Second, independent quality signal. See ClaimRevision.judge_verdict.
     judge_revisions: bool = True
 
+    # --- Challenger memory (DECISIONS.md D029) ---
+    # The frozen-pool experiment (D028) found the loop never converges: 6/12
+    # claims cycled A->B->A against evidence that never changed. The suspected
+    # root cause is that the challenger is STATELESS across passes — it
+    # re-argues from scratch every time and can reverse a reversal without ever
+    # knowing it already moved this claim. This shows it the claim's revision
+    # history and lets it declare a stalemate instead of flip-flopping.
+    # Config-gated so "memory on" vs "memory off" is a controlled A/B.
+    challenger_sees_history: bool = True
+    max_history_entries: int = 4   # most recent revisions shown; keeps the prompt bounded
+
 
 @dataclass
 class ReportCorrectionConfig:

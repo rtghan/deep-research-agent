@@ -181,6 +181,14 @@ def route_operation(challenge, config: Config) -> str:
     n_sources = challenge.n_supporting_sources + challenge.n_refuting_sources
     has_reversal_evidence = n_sources >= ev.min_sources_for_reversal
 
+    # STALEMATE: the challenger, having seen this claim's revision history, says
+    # its objection would push the claim back toward a wording it already held.
+    # Rewriting again would just continue the cycle D028 measured, so the claim
+    # stands and gets flagged as contested instead. This is the only branch that
+    # depends on the challenger having memory of its own past decisions.
+    if challenge.contested_stalemate:
+        return "keep"
+
     # Dominant refuting evidence — the claim's position is no longer the one the
     # literature supports. This is the only gate that can flip a claim, and it
     # requires enough independent sources to be a real signal, not one paper's
@@ -261,7 +269,7 @@ def evolve_claims(
     """
     summary = {
         "challenged": 0, "keep": 0, "refine": 0, "narrow": 0,
-        "reverse": 0, "retract": 0, "changed": 0,
+        "reverse": 0, "retract": 0, "changed": 0, "stalemate": 0,
     }
 
     if not config.evolution.enabled:
@@ -320,7 +328,26 @@ def evolve_claims(
         if operation == "keep":
             summary["keep"] += 1
             claim.challenges_survived += 1
-            if claim.challenges_survived >= config.evolution.stability_rounds:
+            # A declared stalemate is not the same as surviving scrutiny: the
+            # challenger still objects, it just recognises that acting on the
+            # objection would restart a cycle. Freeze immediately and mark the
+            # claim contested so the report says so rather than presenting
+            # whichever wording the last pass happened to produce.
+            if challenge.contested_stalemate:
+                claim.oscillating = True
+                claim.frozen = True
+                summary["stalemate"] = summary.get("stalemate", 0) + 1
+                log_step(
+                    state, component="evolution", step="stalemate_declared",
+                    input_summary=f"{claim.claim_id} v{claim.version}",
+                    output_summary=(
+                        "challenger saw the revision history and declined to re-litigate; "
+                        "claim held and flagged as genuinely contested"
+                    ),
+                    latency_ms=0, cost_tokens=0,
+                    metadata={"claim_id": claim.claim_id, "critique": challenge.critique[:200]},
+                )
+            elif claim.challenges_survived >= config.evolution.stability_rounds:
                 claim.frozen = True
             continue
 

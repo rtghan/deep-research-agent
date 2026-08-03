@@ -546,3 +546,35 @@ Shipped as an **alternate strategy** (`adaptive.strategy: "threshold" | "schedul
 **The reframe worth keeping.** Oscillation is **diagnostic, not merely a bug**: a claim that cannot settle under repeated challenge means the evidence does not determine the answer. The system now distinguishes three honest states — supported, retracted, and *genuinely contested* — where before it had two and would emit an arbitrary reading of the third as if it were a conclusion.
 
 **What it did not solve.** The root cause of oscillation is unaddressed: the challenger is stateless across passes, so it re-argues from scratch each time and can reverse a reversal without ever seeing that it did so. Giving the challenger the claim's revision history — "you already moved this claim once, on this evidence" — is the obvious next experiment, and would test whether oscillation is a memory problem or a genuine evidential tie. n=12 claims from 2 test cases is also small; the pattern is stark but the sample is not large.
+
+---
+
+## D029 — Challenger memory does not fix oscillation: the third failure of prompting **[S2] [S3]**
+
+**The hypothesis.** D028 found the evolution loop never converges — 6/12 claims cycling between wordings against evidence that never changed — and proposed a cause: the challenger is *stateless* across passes. It re-derives its objection from scratch each time, so nothing stops it arguing a claim back to a wording it was moved away from two passes ago. If that were right, showing it the claim's revision history should reduce cycling.
+
+**What we built.** `challenger_sees_history` (default on) injects the claim's recent revision log — original wording, each operation, each rationale — into the challenge prompt, plus an explicit instruction: *if your objection would return this claim to a wording it already held, do not argue for it; set `contested_stalemate` instead.* A new `contested_stalemate` verdict routes to `keep`, freezes the claim, and marks it contested rather than triggering another rewrite. Gated by config so "memory on/off" is a controlled A/B.
+
+**What it produced — the hypothesis is refuted.** Same frozen-pool harness, freezing disabled in both arms so the underlying process stays visible, 12 claims × 5 passes:
+
+| | memory off | memory on |
+|---|---|---|
+| revisions per pass | [6, 5, 6, 7, 5] = **29** | [6, 5, 6, 5, 5] = **27** |
+| oscillating claims | **6** | **6** |
+| stalemates declared | — | **0 of 60** |
+
+29 vs 27 on n=12 is noise; oscillation is identical. The challenger was handed its own revision history *and* an explicit escape hatch, and used it **zero times in sixty opportunities**. Verified that the mechanism itself works — `_format_revision_history` renders correctly when revisions exist and is empty when disabled — so this is the model declining the option, not a plumbing bug.
+
+**This is the third independent instance of the same lesson**, which is what makes it worth keeping rather than deleting:
+
+| # | Property demanded in the prompt | Outcome |
+|---|---|---|
+| 1 | "evidence merely silent on a claim is not refuting" | 22% of challenges refuted on ungrounded citations (D022) |
+| 2 | "end every claim with `[confidence: …]`" | a real model emitted **zero** markers |
+| 3 | "declare a stalemate rather than re-litigating" | **zero** declared in 60 chances |
+
+Each time the fix had to move from the prompt into code, and each time the code fix worked. Here the code fix already existed — text-fingerprint oscillation detection freezes cycling claims regardless of what the challenger says — which is why the feature ships despite the negative result: it is cheap, it occasionally helps, and it is dominated by the structural detector.
+
+**A likely root cause, and the more interesting reading.** The challenger's system prompt ends *"Do not be agreeable... look hard first."* We have explicitly instructed it to always find fault. Declaring a stalemate is a *concession*, which conflicts with the role it was given — so the adversarial framing may be self-defeating for convergence: an agent told its job is to find what is wrong will find something wrong, every time, forever. If that is right, oscillation is not a memory failure but a **role failure**, and the fix is to give the critic genuine permission to approve — or to accept that a permanently adversarial critic must be bounded structurally rather than persuaded. This is testable: run the same harness with the adversarial framing softened and see whether stalemates appear.
+
+**What it did not solve.** n=12 claims from 2 test cases is small; the effect would have to be large to show up, and a modest real effect could hide in that noise. The role-failure hypothesis above is untested. And the deeper question D028 raised is still open: whether non-convergence on genuinely contested claims is a *defect* at all, or the correct behaviour finally made visible.

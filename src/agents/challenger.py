@@ -106,6 +106,15 @@ Flaw vocabulary (use these labels where they fit, add your own if none do):
 overgeneralization, unsupported_causality, scope_error, cherry_picked,
 stale_evidence, conflates_metrics, vague
 
+3. REVISION HISTORY. If this claim has been challenged before, its previous
+   wordings are shown. Read them. If the change you are about to argue for
+   would return the claim to a wording it ALREADY HELD and was moved away
+   from, do not argue for it — that is a sign the evidence genuinely does not
+   settle this question, and cycling between two wordings adds nothing. Set
+   "contested_stalemate": true and explain what the two sides are. A claim
+   the evidence cannot decide is a real finding; a claim that flip-flops
+   forever is noise.
+
 Verdicts:
 - "sound": the claim is warranted as written
 - "needs_nuance": basically right, but evidence requires a scope qualifier
@@ -119,6 +128,7 @@ Respond as JSON: {
     "supporting_evidence_indices": [int, ...],
     "refuting_evidence": [{"index": int, "quote": "verbatim text from that evidence chunk"}, ...],
     "verdict": "sound" | "needs_nuance" | "needs_reversal" | "unsupported",
+    "contested_stalemate": true | false,
     "critique": "the single strongest reason this claim is not warranted, one or two sentences"
 }
 
@@ -141,6 +151,7 @@ class ChallengeResult:
     contested_dimension: str = ""
     refuting_quotes: list[str] = field(default_factory=list)
     dropped_ungrounded_refutations: int = 0
+    contested_stalemate: bool = False   # evidence cannot settle this; stop cycling
 
 
 def _format_evidence_pool(pool: list[EvidenceChunk], cited_ids: set[str]) -> str:
@@ -158,6 +169,46 @@ def _format_evidence_pool(pool: list[EvidenceChunk], cited_ids: set[str]) -> str
             f"{chunk.text[:700]}"
         )
     return "\n".join(lines)
+
+
+def _format_revision_history(claim: Claim, config: Config) -> str:
+    """
+    Show the challenger what it (or a previous pass) already did to this claim.
+
+    This exists because of a measured failure, not a hunch. The frozen-pool
+    experiment (DECISIONS.md D028) re-challenged claims against evidence that
+    never changed and found the loop never settles: 6 of 12 claims cycled
+    between wordings they had already held, at a flat ~50% keep rate over five
+    passes. The suspected cause is that the challenger is stateless across
+    passes — it re-derives its objection from scratch every time, so nothing
+    stops it from arguing a claim back to a wording it was moved away from two
+    passes ago.
+
+    Giving it the history tests that hypothesis directly: if oscillation is a
+    memory problem, it should drop; if the evidence genuinely does not settle
+    the question, the challenger now has a way to SAY so (contested_stalemate)
+    instead of expressing it as an infinite flip-flop.
+    """
+    if not config.evolution.challenger_sees_history or not claim.revisions:
+        return ""
+
+    recent = claim.revisions[-config.evolution.max_history_entries:]
+    lines = [
+        f"\nREVISION HISTORY — this claim has already been challenged and changed "
+        f"{len(claim.revisions)} time(s):"
+    ]
+    if claim.original_text:
+        lines.append(f"  original: \"{claim.original_text[:200]}\"")
+    for r in recent:
+        lines.append(
+            f"  -> [{r.operation}] became: \"{r.new_text[:200] or '(retracted)'}\"\n"
+            f"     because: {r.rationale[:160]}"
+        )
+    lines.append(
+        "  If your objection would move this claim back toward a wording it "
+        "already held, set contested_stalemate instead."
+    )
+    return "\n".join(lines) + "\n"
 
 
 def _distinct_sources(chunk_ids: list[str], pool_map: dict[str, EvidenceChunk]) -> set[str]:
@@ -256,7 +307,8 @@ def challenge_claim(
         result, resp = llm.complete_json(
             system=CHALLENGER_SYSTEM,
             user=(
-                f"Claim (version {claim.version}): {claim.text}\n\n"
+                f"Claim (version {claim.version}): {claim.text}\n"
+                f"{_format_revision_history(claim, config)}\n"
                 f"Full evidence pool for this sub-question:\n{evidence_text}\n\n"
                 f"Attack this claim. What does the evidence as a whole actually license?"
             ),
@@ -320,6 +372,7 @@ def challenge_claim(
         contested_dimension=str(result.get("contested_dimension", "") or "")[:200],
         refuting_quotes=refuting_quotes,
         dropped_ungrounded_refutations=dropped,
+        contested_stalemate=bool(result.get("contested_stalemate", False)),
     )
 
     log_step(
