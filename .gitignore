@@ -11,3 +11,6 @@ ablations/results/
 # (30MB+ per eval sweep). The findings a reviewer actually needs -- reports,
 # traces, and metrics summaries -- are committed; state.json is not.
 eval/results/**/state.json
+
+# Local archive of files removed from the remote (kept for presentation prep)
+.archive/
