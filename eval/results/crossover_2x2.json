@@ -1,0 +1,27 @@
+{
+  "('A', 'A')": {
+    "n": 15,
+    "faults": 8,
+    "fault_rate": 0.5333333333333333,
+    "mean_reasoning": 0.7733333333333333
+  },
+  "('A', 'B')": {
+    "n": 15,
+    "faults": 4,
+    "fault_rate": 0.26666666666666666,
+    "mean_reasoning": 0.8666666666666667
+  },
+  "('B', 'A')": {
+    "n": 16,
+    "faults": 10,
+    "fault_rate": 0.625,
+    "mean_reasoning": 0.75
+  },
+  "('B', 'B')": {
+    "n": 16,
+    "faults": 4,
+    "fault_rate": 0.25,
+    "mean_reasoning": 0.93125
+  },
+  "interaction_pp": 10.833333333333334
+}

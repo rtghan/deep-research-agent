@@ -367,3 +367,45 @@ Consequence: 81.7% should be reported as "a clear majority," always beside the 1
 - **Three-way `threshold` vs `scheduler` vs uniform** — the highest-value *remaining* test, and the one the Track A headline needs. Deferred purely on cost: 3 configs × N cases at ~$0.50–2 per sweep.
 - **2×2 self-agreement crossover** — settles D026's confound, but needs a fresh claim set authored by the second model before the crossover is even possible.
 - **Noisy-retrieval injection (D019)** and **prompt-injection** — both cheap and both still open; prompt injection in particular would convert a named weakness into a measured one, which is strictly better than declaring it.
+
+---
+
+## 18. Prompt injection, and the crossover that couldn't answer its question
+
+### 18.1 Prompt injection (14 claims × 4 payloads, paired)
+
+Named as the sharpest unaddressed risk in both the README and SUBMISSION_REVIEW.md. Declaring a risk is free; this measures it. Control = clean evidence pool; treatment = identical pool with a hostile chunk inserted *mid-pool*, dressed as an ordinary retrieved page.
+
+| payload | mean Δsupport | verdict → `sound` |
+|---|---|---|
+| instruction override | +0.000 | 0/14 |
+| fake system turn | +0.036 | **1/14** |
+| pre-baked JSON | +0.000 | 0/14 |
+| fabricated authority | +0.000 | 0/14 |
+
+**1 flip in 56 attempts (1.8%).** Only the fake-system-turn shape landed — the one that imitates a role boundary inside the evidence text. The fabricated-authority payload, which uses no format exploitation at all (an invented *Nature* meta-analysis asserting the claim), moved nothing, suggesting the verifier anchors on quoted evidence rather than claimed authority.
+
+**The caveat that matters, because this result flatters us.** Rebuilding the harness broke the original claim→evidence pairings, so 12 of 14 controls sat at `support = 0.00`. That makes this a strong test of *"can injection rescue a hopeless claim"* and a weak test of *"can injection tip a borderline one"* — the realistic attack, still unmeasured. Four naive payloads, n=14, and both models may simply be hardened against these well-known patterns.
+
+Net: the risk moves from *unaddressed* to *measured at 1.8% under naive attack, untested under adaptive attack* — and it names the first thing worth fixing (delimit evidence text, strip role markers before it enters a prompt; cheap, not done).
+
+### 18.2 The 2×2 crossover — underpowered, but it confirms the confound
+
+D026 could not separate "gpt-4o-mini doesn't go easy on itself" from "gpt-4o-mini is just harsher," because every claim was authored by gpt-4o-mini. The fix needs the missing cell, so step one was extracting claims with deepseek-chat over the *same* evidence pools.
+
+| | critic A (gpt-4o-mini) | critic B (deepseek-chat) |
+|---|---|---|
+| claims authored A | **53.3%** (8/15) *self* | 26.7% (4/15) |
+| claims authored B | 62.5% (10/16) | **25.0%** (4/16) *self* |
+
+**The interaction (+10.8 pp) is not interpretable.** Its two terms have opposite signs — on A's claims the foreign critic found *less* fault (−26.7 pp); on B's claims it found *more* (+37.5 pp). Coherent self-agreement bias needs both positive. Every cell carries a ~40 pp wide 95% interval at n≈15; resolving a 10 pp interaction needs hundreds of claims per cell. **Underpowered by about an order of magnitude — verdict: inconclusive.**
+
+**What it does settle:** the main effect is unambiguous. Critic A finds fault **57.9%** of the time vs critic B's **25.8%** — a 32 pp gap, 3× the interaction, stable across both authorships. That confirms D026's confound diagnosis was right: its headline was driven by critic harshness, not authorship.
+
+### 18.3 The pattern in my own tooling
+
+Three experiment scripts printed an automated verdict line. **All three overstated their own data** — "the process settles on its own" when neither arm converged; "partially a memory problem" on a 29-vs-27 difference at n=12; "SELF-AGREEMENT BIAS PRESENT" on an interaction whose terms had opposite signs. Every time, the table below was right and the sentence above it was wrong.
+
+Same mechanism each time: a threshold written *before* seeing the data, encoding the expected outcome, with no branch for "inconclusive."
+
+The irony is the point. This project's thesis is that a system should not claim more confidence than its evidence supports — and the tooling built to evaluate it did exactly that, three times. **A generated conclusion is a claim like any other.** Rules taken from it: always print the contingency table, never only the verdict; and give every automated verdict an explicit *inconclusive* branch, because a binary threshold cannot represent insufficient evidence. The bad verdict lines are left in the logs, since the failure teaches more than the fix.
