@@ -65,6 +65,8 @@ support_lift).
 
 from __future__ import annotations
 
+import hashlib
+
 from src.agents.challenger import challenge_claim
 from src.agents.reviser import revise_claim
 from src.scoring.judge import judge_revision
@@ -79,6 +81,12 @@ from src.orchestrator.state import (
     SubQuestion,
 )
 from src.scoring.verifier import verify_claims
+
+
+def _text_fingerprint(text: str) -> str:
+    """Whitespace/case-insensitive fingerprint, for detecting repeated wordings."""
+    normalized = " ".join((text or "").lower().split())
+    return hashlib.md5(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 def evidence_pool_for(state: ResearchState, sq: SubQuestion) -> list[EvidenceChunk]:
@@ -361,6 +369,30 @@ def evolve_claims(
 
         if claim.original_text is None:
             claim.original_text = prev_text
+
+        # Oscillation check: has this claim held this exact text before? If so
+        # it is cycling rather than converging, and further challenges are
+        # waste — the frozen-pool experiment showed such claims never settle,
+        # even against evidence that never changes. Freeze it and record WHY,
+        # so the report can say the sources genuinely conflict here instead of
+        # silently presenting whichever version the last pass happened to land on.
+        if not claim.text_history:
+            claim.text_history = [_text_fingerprint(prev_text)]
+        new_fp = _text_fingerprint(revision.revised_text)
+        if new_fp in claim.text_history:
+            claim.oscillating = True
+            claim.frozen = True
+            log_step(
+                state, component="evolution", step="oscillation_detected",
+                input_summary=f"{claim.claim_id} v{claim.version}",
+                output_summary=(
+                    "claim returned to a previous wording — cycling, not converging; "
+                    "frozen and flagged as unresolvable with current evidence"
+                ),
+                latency_ms=0, cost_tokens=0,
+                metadata={"claim_id": claim.claim_id, "versions_seen": len(claim.text_history)},
+            )
+        claim.text_history.append(new_fp)
 
         claim.text = revision.revised_text
         claim.evidence_ids = revision.evidence_ids or claim.evidence_ids

@@ -85,6 +85,20 @@ class Claim(BaseModel):
     challenges_survived: int = 0      # consecutive "keep" verdicts
     frozen: bool = False              # stable — stop paying to re-challenge it
 
+    # --- Oscillation detection (frozen-pool experiment, TESTING.md section 14) ---
+    # A claim whose text returns to a value it already held is CYCLING, not
+    # being refined: narrow -> reverse -> narrow back. The frozen-pool
+    # experiment found 6/12 claims doing exactly this against evidence that
+    # never changed, at a steady ~50% keep rate that showed no convergence over
+    # 5 passes. Raw revision counts cannot tell that apart from real progress,
+    # which is why it needs its own signal.
+    #
+    # Oscillation is DIAGNOSTIC, not just a bug to suppress: a claim that
+    # cannot settle means the evidence genuinely does not determine the answer.
+    # That is worth reporting to the reader, not hiding.
+    text_history: list[str] = Field(default_factory=list)  # md5 prefixes of past texts
+    oscillating: bool = False
+
     @property
     def is_active(self) -> bool:
         return self.status == "active"

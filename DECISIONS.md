@@ -500,3 +500,49 @@ Paired table: **both found fault 86; only-independent 0; only-self 12; neither 7
 **One incidental validation.** Both models proposed ungrounded refutations at nearly identical rates (0.28 vs 0.30 dropped per claim, ~28-30%). The quote-grounding fix from D022 is doing real work regardless of which model sits behind it — this is not a quirk of one provider.
 
 **What it did not solve.** The 2×2 crossover described above is the definitive experiment and has not been run. Nor do we know which challenger is *more accurate* — "harsher" and "correct" are different properties, and establishing the latter would need the revision judge (D022) or human adjudication applied to the discordant cases specifically.
+
+---
+
+## D027 — Effort allocation: ranking instead of thresholds (alternate strategy) **[S1] [S4]**
+
+**The problem.** D023 found the threshold allocator could effectively never grant a third retrieval round. `budget = int(min + difficulty·(max−min))` needs difficulty ≥ 0.667 for budget 3; difficulty updates as `0.6·(1−avg_confidence) + 0.4·linguistic`, so clearing that at a typical linguistic difficulty of 0.3 requires **average claim confidence ≤ 0.09** — "everything we found is worthless." Observed median confidence was 0.85 and **0 of 35 sub-questions ever crossed the bar**. Multi-round research was unreachable, so `stability_rounds` and the entire convergence story went untested through three evaluations.
+
+**Diagnosis.** This is a *threshold calibration* failure, not a signal failure. Difficulty discriminated fine (0.13 vs 0.31 is a 2.4× spread); it never cleared an arbitrary absolute bar. Rescaling the bar relocates the problem rather than fixing it — any fixed threshold over a signal whose range drifts with topic and model will eventually mis-fire in one direction or the other.
+
+**Alternatives considered.**
+- *Recalibrate the map* (`round()` instead of `int()`, or a sigmoid). Cheapest, and treats the symptom: the next model or corpus shifts the confidence distribution and the bar is wrong again.
+- *Marginal information gain as the stopping rule.* Attractive, but source novelty is the obvious metric and it is **manufactured by our own query reformulator** (D024), which exists precisely to make round 2 return different sources — measured at 67–100% novel. A novelty-driven stop would be measuring the reformulator's effectiveness, not the topic's exhaustion, and the two features would form a non-terminating loop.
+- *Answer-satisfaction judgment per sub-question per round.* Rejected as duplication: the report critic (D025) already asks "does this answer the question?" and can reopen research. Adding a second LLM judge at finer granularity creates two authorities on the same property with no principled arbitration, at far higher cost.
+
+**What we chose.** Rank, don't threshold. `src/orchestrator/scheduler.py` allocates a single **global round pool** by repeatedly giving the next round to the highest-marginal-value sub-question. An argmax has nothing to calibrate: even when every difficulty sits in [0.13, 0.31], ranking still allocates differentially, and **the difficulty formula is untouched**. Cost becomes a direct knob (`total_round_pool`) instead of an emergent consequence of per-item thresholds — the 12-hour and 2.3-hour evaluation runs happened because nothing held a total. Setting `pool == n_sub_questions` reproduces the uniform baseline exactly, so that baseline becomes a parameter rather than a separate code path.
+
+`marginal_value = uncertainty × yield × (1 − oscillation) × coverage_deficit` — a product, so any single near-zero term vetoes the allocation rather than being averaged away by a weighted sum. Uncertainty uses confidence *spread* as well as mean, because claims at 0.9 and 0.3 are unresolved in a way a uniform 0.6 is not, and the old mean-only signal could not see the difference.
+
+Shipped as an **alternate strategy** (`adaptive.strategy: "threshold" | "scheduler"`, default `threshold`) with the round body shared verbatim between both, so the two differ only in scheduling and remain directly comparable.
+
+**What it produced.** In mock, the scheduler allocated **4/2/2** rounds across three sub-questions with monotonically decreasing marginal values (0.31 → 0.29 → 0.16 → 0.10) and stopped early with pool unspent once nothing cleared the floor. One sub-question reached **4 rounds** — against 0-of-35 exceeding 2 under the threshold strategy. The mechanism the previous design could not reach is now reachable.
+
+**What it did not solve.** This changes *where* effort goes, not *whether* the inner loop converges — see D028, which found it does not, and which invalidated this scheduler's first yield term. No real-model comparison of the two strategies has been run, so the Track A "3.5× cheaper" claim still describes the threshold path only.
+
+---
+
+## D028 — The evolution loop does not converge; oscillation is the missing signal **[S2] [S3]**
+
+**The problem.** Every multi-round measurement was confounded: each round also ran fresh retrieval, so "claims kept changing" could equally mean the loop never settles or that new evidence legitimately kept arriving. TESTING.md §11 flagged this; D027's scheduler would be built on sand without an answer.
+
+**What we did.** Froze the evidence pool and re-challenged the same 12 claims against the same evidence for 5 passes, under **two conditions** — because the single-condition version is self-deceiving: `stability_rounds=2` freezes claims surviving two consecutive challenges, making churn look bounded by construction. So condition A ran the production default, and condition B disabled freezing (`stability_rounds=999`) to expose the underlying behaviour.
+
+**What it produced — a clear negative result.** Neither condition converges. Revisions per pass: A = [5, 6, 5, 6, 5], B = [6, 6, 4, 6, 5]. Against evidence that never changed, claims are rewritten indefinitely at a steady ~50% keep rate with no downward trend. **6 of 12 claims oscillate**: their text returns to a wording it already held (A→B→A) — `narrow` → `reverse` → `narrow` back.
+
+**`stability_rounds` is a circuit breaker, not a convergence mechanism.** In condition A six claims froze and the *remaining* six fell to a **0% keep rate by pass 4**. Freezing removed claims from observation rather than settling them. This also overturns §11's earlier, more charitable reading — that falling keep-rates reflected genuinely new evidence arriving — since the identical pattern appears with no new evidence at all.
+
+**It immediately invalidated part of D027.** The scheduler's yield term counted "claims changed" as evidence a round was productive. Oscillating claims change every round forever, so that signal reads perpetual thrash as perpetual productivity and would concentrate the entire pool on the sub-question least able to use it. Caught only because this experiment ran *before* the scheduler was trusted.
+
+**What we changed.**
+1. `Claim.text_history` fingerprints every wording; a revision returning to a previous fingerprint sets `oscillating=True` and freezes the claim immediately, without waiting for `stability_rounds`.
+2. The scheduler's yield term is scaled by `(1 − oscillating_fraction)`: cycling now *suppresses* spending, on the reasoning that more retrieval cannot resolve a genuine conflict in the literature.
+3. Oscillating claims are surfaced in the report under "Unresolved under repeated scrutiny" rather than silently presenting whichever version the last pass produced.
+
+**The reframe worth keeping.** Oscillation is **diagnostic, not merely a bug**: a claim that cannot settle under repeated challenge means the evidence does not determine the answer. The system now distinguishes three honest states — supported, retracted, and *genuinely contested* — where before it had two and would emit an arbitrary reading of the third as if it were a conclusion.
+
+**What it did not solve.** The root cause of oscillation is unaddressed: the challenger is stateless across passes, so it re-argues from scratch each time and can reverse a reversal without ever seeing that it did so. Giving the challenger the claim's revision history — "you already moved this claim once, on this evidence" — is the obvious next experiment, and would test whether oscillation is a memory problem or a genuine evidential tie. n=12 claims from 2 test cases is also small; the pattern is stark but the sample is not large.

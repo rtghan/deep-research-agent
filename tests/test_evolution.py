@@ -425,4 +425,54 @@ check("retracted claims are disclosed, not silently dropped",
 
 print("\n" + ("ALL CHECKS PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
 
+# --- 12. Oscillation detection + scheduler (frozen-pool experiment fallout) ---
+# The frozen-pool experiment showed 6/12 claims cycling A->B->A against evidence
+# that never changed, at a flat ~50% keep rate over 5 passes. Raw revision counts
+# cannot distinguish that from progress, which broke the scheduler's yield term.
+from src.orchestrator.evolution import _text_fingerprint
+from src.orchestrator.scheduler import marginal_value, RoundOutcome
+
+check("text fingerprint ignores case and whitespace",
+      _text_fingerprint("X beats Y") == _text_fingerprint("  x   BEATS y "))
+check("text fingerprint distinguishes different claims",
+      _text_fingerprint("X beats Y") != _text_fingerprint("Y beats X"))
+
+osc_sq = SubQuestion(sq_id="sq_osc", question="contested?")
+osc_state = ResearchState(query="t", plan=ResearchPlan(query="t", sub_questions=[osc_sq]))
+for i in range(4):
+    osc_state.claims.append(Claim(
+        claim_id=f"o{i}", text=f"claim {i}", sub_question_id="sq_osc",
+        support_score=0.6, confidence=0.5))
+
+steady = marginal_value(osc_state, osc_sq, RoundOutcome(new_claims=3, claims_changed=3), cfg)
+for c in osc_state.claims:
+    c.oscillating = True
+thrashing = marginal_value(osc_state, osc_sq, RoundOutcome(new_claims=3, claims_changed=3), cfg)
+check("oscillating sub-question is DEPRIORITISED despite identical churn",
+      thrashing < steady, f"{thrashing:.4f} < {steady:.4f}")
+
+for c in osc_state.claims:
+    c.oscillating = False
+dry = marginal_value(osc_state, osc_sq, RoundOutcome(found_nothing=True), cfg)
+check("a dry round suppresses further spending", dry < steady)
+untried = marginal_value(osc_state, osc_sq, None, cfg)
+check("an untried sub-question is explored optimistically", untried >= steady)
+
+# Ranking, not thresholds: even when every value is far below any absolute bar,
+# argmax must still discriminate -- this is the property the old allocator lacked.
+lo_sq = SubQuestion(sq_id="sq_lo", question="settled?")
+osc_state.plan.sub_questions.append(lo_sq)
+for i in range(12):
+    osc_state.claims.append(Claim(claim_id=f"l{i}", text=f"l{i}",
+                                  sub_question_id="sq_lo", support_score=0.95, confidence=0.95))
+v_hi = marginal_value(osc_state, osc_sq, RoundOutcome(new_claims=2, claims_changed=2), cfg)
+v_lo = marginal_value(osc_state, lo_sq, RoundOutcome(new_claims=0, claims_changed=0), cfg)
+check("ranking discriminates even when both values are tiny",
+      v_hi > v_lo and max(v_hi, v_lo) < 0.7, f"{v_hi:.3f} vs {v_lo:.3f}")
+
+check("scheduler strategy is opt-in; threshold remains the default",
+      Config.load().adaptive.strategy == "threshold")
+
+print("\n" + ("ALL CHECKS PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
+
 sys.exit(1 if fails else 0)

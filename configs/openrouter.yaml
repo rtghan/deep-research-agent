@@ -32,6 +32,22 @@ adaptive:
   low_confidence_threshold: 0.5
   novelty_threshold: 0.15
 
+  # --- Effort allocation strategy (DECISIONS.md D027) ---
+  # "threshold"  = original per-sub-question budget from an absolute difficulty
+  #                bar. MEASURED unable to grant a 3rd round: 0 of 35
+  #                sub-questions ever crossed it, because difficulty saturates
+  #                at 0.13-0.31 while budget 3 needs 0.667.
+  # "scheduler"  = global pool allocated by RANKING sub-questions on marginal
+  #                value. No absolute bar to calibrate, so saturation cannot
+  #                block multi-round research.
+  strategy: "threshold"
+  # scheduler-only. total_round_pool == number of sub-questions reproduces the
+  # uniform baseline exactly.
+  total_round_pool: 12
+  max_rounds_per_sub_question: 4
+  marginal_value_floor: 0.08
+  target_claims_per_sub_question: 12
+
 verification:
   enabled: true
   verifier_model: "google/gemma-4-26b-a4b-it:free"

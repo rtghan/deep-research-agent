@@ -122,6 +122,21 @@ def _render_confidence_index(state, active_claims, evidence_map) -> str:
             text = (c.text or "").replace("|", "\\|")
             lines.append(f"| {c.confidence or 0.0:.2f} | {status} | {text} | {src} |")
 
+    # Oscillating claims are a FINDING, not noise. A claim that cycles between
+    # wordings under repeated challenge means the evidence does not determine
+    # the answer — reporting the last version the loop happened to land on
+    # would be presenting an arbitrary coin-flip as a conclusion.
+    oscillating = [c for c in active_claims if c.oscillating]
+    if oscillating:
+        lines.append(
+            f"\n**Unresolved under repeated scrutiny ({len(oscillating)})** — these "
+            f"claims changed position and then changed back when re-challenged "
+            f"against the same evidence. The sources genuinely conflict; treat the "
+            f"wording below as one defensible reading, not a settled conclusion.\n"
+        )
+        for c in oscillating:
+            lines.append(f"- {(c.text or '')[:200]}")
+
     retracted = [c for c in state.claims if c.status == "retracted"]
     if retracted:
         lines.append(

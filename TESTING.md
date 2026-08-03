@@ -219,3 +219,68 @@ Mock end-to-end: pass 1 diagnosed a buried answer + overstatement, reopened rese
 **A third real-model boundary bug** surfaced during this work: `resp.choices` was `None` from `deepseek-chat` — HTTP 200 with an incomplete body, not merely malformed JSON content. Fixed once at the boundary (`_extract_message_text` in `src/tools/base.py`) for both `complete()` and `complete_json()`. Three such bugs now, all only reachable under real API load — the mock client can simulate content-level malformation but not infrastructure-level.
 
 **Still unmeasured:** whether reformulated rounds actually retrieve more *diverse sources* than verbatim re-runs (measure: inter-round source overlap, with and without); how a real critic behaves at eval scale (first-pass accept rate, whether reopened research improves the report or just adds volume); and whether the mechanical tier catches defects the LLM critic misses, which is the claim justifying its existence.
+
+---
+
+## 14. Frozen-pool convergence: the loop does not converge, and freezing was hiding it
+
+Every multi-round result up to this point was confounded: each round also ran fresh retrieval, so "claims kept changing" could mean *the loop doesn't converge* **or** *new evidence legitimately kept arriving*. Section 11 flagged this as unresolved. This experiment isolates it — **freeze the evidence pool** and re-challenge the same claims against the same evidence for 5 passes.
+
+**Two conditions, because the single-condition version would have been self-deceiving.** `stability_rounds=2` freezes any claim surviving two consecutive challenges, which makes churn *look* bounded almost by construction. So:
+
+- **A** — `stability_rounds=2` (production default)
+- **B** — `stability_rounds=999` (freezing effectively disabled)
+
+12 claims (6 from `tc4_factual`, 6 from `tc2_contradictory` — settled vs. contested), `gpt-4o-mini` extractor/reviser, `deepseek-chat` challenger.
+
+| pass | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| **A** revisions | 5 | 6 | 5 | 6 | 5 |
+| **A** keep-rate | 58.3% | 50.0% | 16.7% | **0.0%** | 16.7% |
+| **A** frozen | 0/12 | 6/12 | 6/12 | 6/12 | 6/12 |
+| **B** revisions | 6 | 6 | 4 | 6 | 5 |
+| **B** keep-rate | 50.0% | 50.0% | 66.7% | 50.0% | ~50% |
+| **B** frozen | 0 | 0 | 0 | 0 | 0 |
+
+**Neither condition converges.** Against evidence that never changed, claims are rewritten indefinitely at a steady ~50% keep rate, with no downward trend over five passes.
+
+**6 of 12 claims oscillate** — their text returns to a value it already held (A→B→A). That is cycling, not refinement: `narrow` → `reverse` → `narrow` back. Raw revision counts cannot distinguish this from steady improvement, which is exactly why oscillation was instrumented separately.
+
+**`stability_rounds` is a circuit breaker, not a convergence mechanism.** In condition A, 6 claims froze — and the *remaining* 6 dropped to a **0% keep rate by pass 4**, i.e. changing on essentially every challenge. Freezing removed claims from observation rather than settling them. Condition B, with freezing off, shows the underlying behaviour plainly: perpetual churn. The prior reading in §11 — that falling keep-rates were a defensible response to genuinely new evidence — does not survive this: the same pattern appears with no new evidence at all.
+
+*(A note on the harness: the script's auto-printed verdict line concluded "the underlying process settles on its own." That is wrong — it compares final revision counts between conditions and falls through to an else-branch when neither converges. The table above is the correct reading. Left as a caution about trusting a summary line over the data it summarises.)*
+
+### This invalidated part of the scheduler written the same day
+
+The new scheduler (§15) scores allocation partly on **observed yield** — did the last round change any standing claim? Oscillating claims change *every* round, forever. A yield signal counting "claims changed" therefore reads perpetual thrash as perpetual productivity, and the scheduler would have poured its entire pool into the one sub-question least able to use it.
+
+Caught only because the experiment ran *before* the scheduler was trusted. Fixes:
+
+1. **Oscillation detection** in `evolution.py`: each claim keeps a `text_history` of wording fingerprints; a revision returning to a previous fingerprint sets `oscillating=True` and freezes the claim immediately — no waiting for `stability_rounds`.
+2. **Oscillation as a negative signal** in `scheduler.py`: the yield term is scaled by `(1 − oscillating_fraction)`. Cycling suppresses spending instead of attracting it, on the reasoning that more retrieval does not resolve a genuine conflict in the literature.
+3. **Oscillation surfaced in the report**, not suppressed. A claim that cannot settle under repeated challenge is a *finding*: the evidence does not determine the answer. Reporting whichever version the last pass happened to land on would present a coin-flip as a conclusion. The confidence index now carries an "Unresolved under repeated scrutiny" section.
+
+That last point is the reframe worth keeping: **oscillation is diagnostic, not merely a bug**. The system now distinguishes three honest states — supported, retracted, and *genuinely contested* — where before it had only the first two and would silently emit an arbitrary reading of the third.
+
+---
+
+## 15. Alternate effort strategy: global scheduler (`adaptive.strategy`)
+
+Added as a **parallel strategy behind a config flag**, not a replacement, so both remain runnable and directly comparable: `adaptive.strategy: "threshold" | "scheduler"`, defaulting to `threshold`.
+
+**Why.** §11 established that the threshold allocator can effectively never grant a third round: budget 3 requires difficulty ≥ 0.667, difficulty updates as `0.6·(1−avg_confidence) + 0.4·linguistic`, so clearing that bar at typical linguistic difficulty needs **average claim confidence ≤ 0.09**. Observed median confidence was 0.85; observed difficulty spanned 0.13–0.31; **0 of 35 sub-questions ever crossed the threshold**. Multi-round research was unreachable in practice, so the convergence question could not even be posed from a normal run.
+
+**The diagnosis: threshold calibration, not signal quality.** Difficulty discriminated fine — 0.13 vs 0.31 is a real 2.4× spread. It simply never cleared an arbitrary absolute bar, and rescaling the bar only relocates the problem.
+
+**The fix: rank instead of threshold.** Ask *"which sub-question most deserves the next round?"* rather than *"does this sub-question deserve more rounds?"* An argmax has nothing to calibrate — even when every difficulty sits in [0.13, 0.31], ranking still allocates differentially. The saturation problem disappears by construction, and **the difficulty formula is left completely unchanged**.
+
+Design:
+- A single **global `total_round_pool`** replaces per-sub-question budgets, making total cost a direct knob rather than an emergent consequence of per-item thresholds. `pool == n_sub_questions` reproduces the uniform baseline exactly, so the ablation baseline becomes a *parameter* rather than a separate code path.
+- **Mandatory cold-start pass** over every sub-question — marginal value cannot be estimated before seeing what a sub-question returns. This is the only honest remaining job of the pre-retrieval linguistic estimate: ordering that sweep.
+- `marginal_value = uncertainty × yield × (1 − oscillation) × coverage_deficit`, a **product** rather than a weighted sum so that any single near-zero term correctly vetoes the allocation instead of being averaged away.
+- **Uncertainty uses spread, not just the mean.** Claims at 0.9 and 0.3 are unresolved in a way a uniform 0.6 is not; the old mean-only signal was blind to that.
+- The pipeline's round body is **shared verbatim** between both strategies, so they differ only in scheduling.
+
+**Verified in mock:** the scheduler allocated **4 / 2 / 2** rounds across three sub-questions (not uniform 3/3/3), with monotonically decreasing marginal values (0.31 → 0.29 → 0.16 → 0.10), and **stopped early with pool unspent** once nothing cleared the floor. One sub-question reached **4 rounds** — against 0-of-35 exceeding 2 under the threshold strategy.
+
+**Not yet done:** no real-model comparison of the two strategies. The Track A "3.5× cheaper" result is currently attributed to difficulty-based allocation and would need re-measuring as convergence-based scheduling before the README claim covers this path. The uniform baseline being reachable as `pool == n_sub_questions` makes that a clean three-way comparison when run.

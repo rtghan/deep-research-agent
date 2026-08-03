@@ -32,6 +32,7 @@ from src.orchestrator.allocator import allocate_budget, should_continue
 from src.orchestrator.config import Config
 from src.orchestrator.evolution import active_claims_for, evolve_claims
 from src.orchestrator.report_loop import run_report_correction
+from src.orchestrator.scheduler import RoundOutcome, run_scheduled_research
 from src.orchestrator.state import ResearchState
 from src.scoring.confidence import score_confidence
 from src.scoring.difficulty import estimate_difficulty, update_difficulty
@@ -121,63 +122,85 @@ def run_research(
     for sq in state.plan.sub_questions:
         reporter.sub(f"  {sq.sq_id}: {sq.question}")
 
-    # Phase 2: Per-sub-question research loop
+    # Phase 2: Research. Two strategies share the SAME round body below and
+    # differ only in scheduling — which sub-question gets the next round, and
+    # when to stop. Keeping the body common is what makes them comparable.
     narrate_phase("Researching each sub-question")
+
+    def run_round(sq, round_num: int) -> RoundOutcome:
+        """One full round for one sub-question. Returns what it bought."""
+        outcome = RoundOutcome()
+        claims_before = {c.claim_id for c in state.claims}
+
+        new_evidence = research_sub_question(state, sq, round_num, config, llm=sub_llm)
+        outcome.new_evidence = len(new_evidence)
+        if not new_evidence:
+            sq.sufficient_evidence = False
+            outcome.found_nothing = True
+            return outcome
+
+        new_claims = extract_claims(state, sq, new_evidence, sub_llm, config)
+        outcome.new_claims = len(new_claims)
+        if not new_claims:
+            outcome.found_nothing = True
+            return outcome
+
+        verify_claims(state, new_claims, sub_llm, config)
+        score_confidence(state, new_claims, config)
+
+        # Claim evolution: challenge EVERY active claim for this sub-question —
+        # including ones written in earlier rounds — against the full
+        # accumulated evidence pool. This is what lets this round's evidence
+        # rewrite an earlier round's claim instead of merely sitting next to it.
+        evolve_claims(
+            state, sq,
+            challenger_llm=challenger_llm,
+            reviser_llm=reviser_llm,
+            verifier_llm=sub_llm,
+            config=config,
+            round_num=round_num,
+            # Reuses the challenger client for judging: it is already
+            # independent from the extractor (DECISIONS.md D021), so no
+            # third API client is needed for this second quality signal.
+            judge_llm=challenger_llm,
+        )
+
+        # Yield is measured on PRE-EXISTING claims only: newly extracted claims
+        # always look like activity, which would double-count the round's own
+        # output as evidence that the round was worthwhile.
+        outcome.claims_changed = sum(
+            1 for c in state.claims
+            if c.claim_id in claims_before
+            and any(r.round_num == round_num for r in c.revisions)
+        )
+
+        sq_claims = active_claims_for(state, sq.sq_id)
+        if sq_claims:
+            score_confidence(state, sq_claims, config)
+        update_difficulty(state, sq, new_claims, config)
+        return outcome
+
     for sq in state.plan.sub_questions:
-        reporter.push(f"[{sq.sq_id}] {sq.question}")
-
-        # Track A: estimate difficulty and allocate budget
         estimate_difficulty(state, sq, config)
-        allocate_budget(state, sq, config)
 
-        # Research loop: retrieve → extract → verify → confidence → maybe loop
-        while sq.rounds_used < sq.compute_budget:
-            round_num = sq.rounds_used + 1
-            new_evidence = research_sub_question(state, sq, round_num, config, llm=sub_llm)
+    if config.adaptive.enabled and config.adaptive.strategy == "scheduler":
+        # Global pool, allocated by ranking. See scheduler.py for why this
+        # exists: the threshold strategy provably could not grant a 3rd round.
+        run_scheduled_research(state, config, run_round)
+    else:
+        # Original strategy: per-sub-question budget from an absolute threshold.
+        for sq in state.plan.sub_questions:
+            reporter.push(f"[{sq.sq_id}] {sq.question}")
+            allocate_budget(state, sq, config)
 
-            if not new_evidence:
-                # No new evidence found — stop early
-                sq.sufficient_evidence = False
-                break
+            while sq.rounds_used < sq.compute_budget:
+                round_num = sq.rounds_used + 1
+                outcome = run_round(sq, round_num)
+                if outcome.found_nothing:
+                    break
 
-            # Extract claims from new evidence
-            new_claims = extract_claims(state, sq, new_evidence, sub_llm, config)
-
-            if new_claims:
-                # Verify and score
-                verify_claims(state, new_claims, sub_llm, config)
-                score_confidence(state, new_claims, config)
-
-                # Claim evolution: challenge EVERY active claim for this
-                # sub-question — including ones written in earlier rounds —
-                # against the full accumulated evidence pool. This is what lets
-                # this round's evidence rewrite an earlier round's claim
-                # instead of merely sitting next to it.
-                evolve_claims(
-                    state, sq,
-                    challenger_llm=challenger_llm,
-                    reviser_llm=reviser_llm,
-                    verifier_llm=sub_llm,
-                    config=config,
-                    round_num=round_num,
-                    # Reuses the challenger client for judging: it is already
-                    # independent from the extractor (DECISIONS.md D021), so no
-                    # third API client is needed for this second quality signal.
-                    judge_llm=challenger_llm,
-                )
-
-                # Re-score every surviving claim: revisions changed the text,
-                # the support scores, and the reasoning scores.
-                sq_claims = active_claims_for(state, sq.sq_id)
-                if sq_claims:
-                    score_confidence(state, sq_claims, config)
-
-                # Update difficulty based on confidence
-                update_difficulty(state, sq, new_claims, config)
-
-                # Feedback loop — should we continue?
                 if config.adaptive.enabled:
-                    if not should_continue(state, sq, new_claims, config):
+                    if not should_continue(state, sq, None, config):
                         n_active = len(active_claims_for(state, sq.sq_id))
                         avg = (
                             sum(c.confidence or 0 for c in active_claims_for(state, sq.sq_id))
@@ -188,12 +211,10 @@ def run_research(
                             f"{n_active} claims at {avg:.2f} average confidence — "
                             f"enough to answer it",
                         )
-                        break  # confidence is high enough, stop spending compute
-                else:
-                    # Uniform mode: always use full budget
-                    if sq.rounds_used >= sq.compute_budget:
                         break
-        reporter.pop()
+                elif sq.rounds_used >= sq.compute_budget:
+                    break
+            reporter.pop()
 
     # Phase 3: Cross-source contradiction detection
     # Retracted claims are excluded — a claim the system already withdrew should

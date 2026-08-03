@@ -48,6 +48,26 @@ class AdaptiveConfig:
     low_confidence_threshold: float = 0.5
     novelty_threshold: float = 0.15
 
+    # --- How retrieval effort is allocated (see src/orchestrator/scheduler.py) ---
+    # "threshold"  — original: per-sub-question budget from an absolute
+    #                difficulty threshold. Measured unable to grant a 3rd round
+    #                in practice (0/35 sub-questions crossed it) because
+    #                difficulty saturates at 0.13-0.31 while budget 3 needs
+    #                0.667. See DECISIONS.md D023/D027.
+    # "scheduler"  — global pool allocated by RANKING sub-questions on marginal
+    #                value. No absolute threshold to calibrate, so saturation
+    #                cannot block multi-round research.
+    strategy: str = "threshold"
+
+    # --- scheduler-only knobs (ignored when strategy == "threshold") ---
+    # Total retrieval rounds across ALL sub-questions. This is the real cost
+    # knob: setting it equal to the sub-question count reproduces the uniform
+    # baseline exactly, so that baseline is a parameter, not a separate path.
+    total_round_pool: int = 12
+    max_rounds_per_sub_question: int = 4   # ceiling so one topic can't eat the pool
+    marginal_value_floor: float = 0.08     # stop early rather than spend the pool
+    target_claims_per_sub_question: int = 12  # coverage term reference point
+
 
 @dataclass
 class VerificationConfig:

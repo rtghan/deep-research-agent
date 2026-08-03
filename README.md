@@ -27,7 +27,7 @@ python run.py --demo --narrate           # watch it work (see below)
 python run.py "your research question"
 python run.py --eval                     # 7-test-case evaluation harness
 python run.py --ablation                 # ablations + figures
-PYTHONPATH=. python tests/test_evolution.py   # 75 offline checks, ~1s, no network
+PYTHONPATH=. python tests/test_evolution.py   # 82 offline checks, ~1s, no network
 ```
 
 ## Watching it think (`--narrate`)
@@ -116,7 +116,7 @@ Two design commitments worth calling out, both learned the hard way:
 | Doc | What's in it |
 |---|---|
 | `ARCHITECTURE.md` | File-by-file walkthrough, data flow, every component's role |
-| `DECISIONS.md` | 26 decisions: problem → alternatives rejected → choice → **what it did not solve** |
+| `DECISIONS.md` | 28 decisions: problem → alternatives rejected → choice → **what it did not solve** |
 | `TESTING.md` | Chronological development/testing log, including everything that failed |
 | `SUBMISSION_REVIEW.md` | Honest audit of this repo against the assignment brief |
 
@@ -125,6 +125,10 @@ Two design commitments worth calling out, both learned the hard way:
 `configs/default.yaml` (OpenAI) and `configs/openrouter.yaml` (OpenRouter). Key knobs:
 
 - `adaptive.enabled` / `min_budget` / `max_budget` — Track A
+- `adaptive.strategy` — `threshold` (default) or `scheduler`. The threshold
+  allocator was *measured* unable to grant a 3rd round (0/35 sub-questions);
+  the scheduler ranks sub-questions against a global pool instead of testing
+  them against an absolute bar. See D027.
 - `verification.enabled` — Track B ablation switch
 - `evolution.challenger_model` — set equal to `llm.sub_step_model` for the self-agreement ablation
 - `evolution.min_sources_for_reversal` — how much evidence a position change requires
@@ -135,12 +139,13 @@ Environment: `OPENAI_API_KEY` or `OPENROUTER_API_KEY` (required); `TAVILY_API_KE
 ## Honest limitations
 
 1. **No embeddings anywhere.** Chunking is fixed-size character slicing; retrieval is keyword-only; evidence selection for the challenger is round-robin by source, not semantic relevance. For a retrieval-heavy system this is the most conspicuous gap.
-2. **Multi-round evolution is rarely reachable.** Across 35 sub-questions, only one ever got 3 rounds. The confidence-based difficulty signal saturates low for any well-documented topic, so `stability_rounds` remains effectively untested.
-3. **`refine` is nearly unreachable** — fired once in 570 revisions. Real models don't emit the wording-only flaw labels that trigger it.
-4. **Calibration is heuristic, not learned** (ECE ≈ 0.13–0.28). Temperature scaling or isotonic regression on held-out data would be the fix.
-5. **Proxy ground truth.** ECE uses `support_score ≥ 0.5` as "correct" — partially circular. The judge and the paired ablation reduce but don't eliminate this.
-6. **The quality stack is self-referential.** Verifier, challenger, and judge are all LLMs, and the judge reuses the challenger's client. No independent ground truth anywhere.
-7. **Prompt injection is unaddressed.** Arbitrary retrieved web/PDF text goes into verifier and challenger prompts.
-8. **No parallelism, retries, caching, or resume.** Sub-questions are independent but run serially; rate limits crashed two runs.
-9. **Report critic's mechanical tier is unproven on real data** — it found 0 of 6 defects in its one real run (the failure modes it targets didn't occur), so its justification is still theoretical.
-10. **No multi-modal output.** Text only; no diagram or taxonomy generation.
+2. **The evolution loop does not converge.** On a *frozen* evidence pool it keeps rewriting claims indefinitely at a ~50% keep rate, and 6/12 claims oscillate between wordings they already held. `stability_rounds` turns out to be a circuit breaker, not a convergence mechanism — it stops looking rather than settling. Oscillating claims are now detected, frozen, and reported as genuinely contested (D028).
+3. **Multi-round was unreachable under the default strategy.** Across 35 sub-questions only one ever got 3 rounds, because difficulty saturates at 0.13–0.31 while budget 3 needs 0.667. The `scheduler` strategy (D027) fixes this by ranking rather than thresholding, but has not yet been compared to `threshold` on real models — the "3.5× cheaper" result above describes the threshold path only.
+4. **`refine` is nearly unreachable** — fired once in 570 revisions. Real models don't emit the wording-only flaw labels that trigger it.
+5. **Calibration is heuristic, not learned** (ECE ≈ 0.13–0.28). Temperature scaling or isotonic regression on held-out data would be the fix.
+6. **Proxy ground truth.** ECE uses `support_score ≥ 0.5` as "correct" — partially circular. The judge and the paired ablation reduce but don't eliminate this.
+7. **The quality stack is self-referential.** Verifier, challenger, and judge are all LLMs, and the judge reuses the challenger's client. No independent ground truth anywhere.
+8. **Prompt injection is unaddressed.** Arbitrary retrieved web/PDF text goes into verifier and challenger prompts.
+9. **No parallelism, retries, caching, or resume.** Sub-questions are independent but run serially; rate limits crashed two runs.
+10. **Report critic's mechanical tier is unproven on real data** — it found 0 of 6 defects in its one real run (the failure modes it targets didn't occur), so its justification is still theoretical.
+11. **No multi-modal output.** Text only; no diagram or taxonomy generation.
