@@ -14,3 +14,6 @@ eval/results/**/state.json
 
 # Local archive of files removed from the remote (kept for presentation prep)
 .archive/
+
+# Speaking notes for presentation prep — local only, not a reviewer deliverable
+presentation/OUTLINE.md

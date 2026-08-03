@@ -3,7 +3,6 @@
 | File | What it is |
 |---|---|
 | `slides.html` | **The deck.** Self-contained — no build step, no network. Open in any browser. |
-| `OUTLINE.md` | The speaking outline the deck was built from: per-slide talking points, anticipated hard questions, and the asset checklist. Keep open on a second screen. |
 
 ## Presenting
 
