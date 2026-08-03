@@ -409,3 +409,34 @@ Three experiment scripts printed an automated verdict line. **All three overstat
 Same mechanism each time: a threshold written *before* seeing the data, encoding the expected outcome, with no branch for "inconclusive."
 
 The irony is the point. This project's thesis is that a system should not claim more confidence than its evidence supports — and the tooling built to evaluate it did exactly that, three times. **A generated conclusion is a claim like any other.** Rules taken from it: always print the contingency table, never only the verdict; and give every automated verdict an explicit *inconclusive* branch, because a binary threshold cannot represent insufficient evidence. The bad verdict lines are left in the logs, since the failure teaches more than the fix.
+
+---
+
+## 19. Model tier: what capability buys, and what it doesn't
+
+Prompted by a direct question — *would more expensive models produce better or faster results?* The informative version is not "run everything on a big model" but **which role actually benefits**, since the roles fail in different ways.
+
+### 19.1 The judge (30 pairs, identical across models, flip-order protocol)
+
+D031 measured the baseline judge as unreliable. This asks whether that is a capability failure or a structural one:
+
+| judge | self-consistent | position-locked | A-share (50% = unbiased) |
+|---|---|---|---|
+| deepseek-chat (baseline) | 50.0% | 33.3% | 28.3% |
+| gpt-4.1 | 73.3% | 23.3% | 59.6% |
+| **gemini-2.5-pro** | **90.0%** | **0.0%** | 57.1% |
+
+**Capability fixes it, decisively** — gemini-2.5-pro is *perfectly order-invariant* over 30 pairs, +40 pp self-consistency over baseline. The bias direction also differs by model (deepseek prefers slot B at 72%; both strong models mildly prefer A), which is itself evidence this is a model property, not a task property.
+
+### 19.2 The lesson this bounds
+
+Three earlier findings all concluded *"when a property must hold, code it; don't ask a model."* This is the counter-example that turns a slogan into a rule:
+
+| failure type | example | fixed by capability? |
+|---|---|---|
+| **property compliance** | emit this exact format · never treat silence as refutation · declare a stalemate | **No** — measured three times, all failed |
+| **judgement quality** | which of these two texts better reflects the evidence | **Yes** — 50% → 90% |
+
+The distinction is whether the model *didn't do what it was told* or *wasn't good enough at the task*. Only the second is buyable. Restated as a design rule: **enforce properties in code; spend money on judgement.**
+
+Practically: running the judge on gemini-2.5-pro costs roughly **$2 per full 7-case sweep** (~520 revisions × ~2.5K tokens) and takes the headline metric from 50% to 90% self-consistency. That is the single best price/quality trade found in this project. Not switched automatically, because it would break comparability with every run already reported.

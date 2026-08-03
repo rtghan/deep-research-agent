@@ -703,3 +703,30 @@ Worth recording separately because it is a pattern, not an incident. Three exper
 In each case the table underneath was correct and the sentence above it was wrong. The mechanism is the same every time: a threshold written *before* seeing the data, encoding the outcome the author expected, with no branch for "inconclusive."
 
 The irony is not lost — this project's entire thesis is that a system should not state more confidence than its evidence supports, and the tooling built to evaluate it did exactly that, three times. The lesson generalises past this repo: **a generated conclusion is a claim like any other and needs the same scrutiny as a model's output.** Two concrete rules taken from it: always print the contingency table, never only the verdict; and give every automated verdict an explicit "inconclusive" branch, because a binary threshold cannot represent insufficient evidence. These verdict lines have been left in the logs rather than quietly corrected, since the failure is more instructive than the fix.
+
+---
+
+## D035 — Capability fixes *judgement* failures; only code fixes *property* failures **[S2]**
+
+**The problem.** D031 measured the judge (deepseek-chat) as materially unreliable: 50% self-consistent under order flip, 33% position-locked, strong preference for whichever text sat in slot B. That judge produces the project's headline quality number. The open question was whether this is a *capability* failure — a better model would simply be more consistent — or a structural property of asking any LLM for a pairwise aesthetic judgement. The two imply completely different fixes: buy a better judge, or redesign the protocol.
+
+**What we did.** Identical 30 pairs (same seed, so paired across models), identical flip-order protocol, three judges.
+
+| judge | self-consistent | position-locked | A-share (50% = unbiased) |
+|---|---|---|---|
+| deepseek-chat (baseline) | 50.0% | 33.3% | 28.3% |
+| gpt-4.1 | 73.3% | 23.3% | 59.6% |
+| **gemini-2.5-pro** | **90.0%** | **0.0%** | 57.1% |
+
+**Capability fixes it, decisively.** gemini-2.5-pro is *perfectly order-invariant* over 30 pairs — zero position-locked judgements — and 90% self-consistent, a +40 pp improvement over baseline. The bias direction also varies by model (deepseek prefers B at 72%; both strong models mildly prefer A), which is itself evidence that this is a model property rather than a property of the task.
+
+**Why this matters more than the number: it bounds the project's central lesson.** Three prior findings (D022, the confidence index, D029) all concluded *"when a property must hold, code it; don't ask a model for it."* This one is the counter-example that makes that lesson precise rather than dogmatic:
+
+- **Property compliance** — emit this exact format, never treat silence as refutation, declare a stalemate when you've been here before — did **not** improve with capability in any measured case. Those needed code.
+- **Judgement quality** — which of these two texts better reflects the evidence — **did** improve with capability, dramatically.
+
+The distinction is whether the failure is the model *not doing what it was told* versus the model *not being good enough at the underlying task*. Only the second is buyable. Stated that way, it is a design rule rather than a slogan: enforce properties in code, and spend money on judgement.
+
+**What we changed.** Nothing automatically — swapping the judge would invalidate the comparability of every run already reported. What it licenses, and what the config now supports: run the judge on gemini-2.5-pro for any future evaluation. The cost is trivial for the value — roughly **$2 per full 7-case sweep** (~520 judged revisions × ~2.5K tokens), to take the headline metric from 50% to 90% self-consistency.
+
+**What it did not solve.** n=30, one prompt, one task shape. "Capability helps judgement" is supported here but should not be extrapolated to every LLM-judge setting without measurement. And a perfectly order-invariant judge is still not a *correct* judge — consistency is necessary, not sufficient. Human adjudication on a sample remains the only way to know whether gemini's 90%-consistent verdicts are also right.
