@@ -1,0 +1,242 @@
+[
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "A",
+    "letter2": "B",
+    "verdict1": "worse",
+    "verdict2": "worse",
+    "kind": "consistent"
+  },
+  {
+    "op": "reverse",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "reverse",
+    "letter1": "A",
+    "letter2": "B",
+    "verdict1": "worse",
+    "verdict2": "worse",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "A",
+    "letter2": "B",
+    "verdict1": "worse",
+    "verdict2": "worse",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "A",
+    "letter2": "B",
+    "verdict1": "worse",
+    "verdict2": "worse",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "reverse",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "equivalent",
+    "verdict1": "improved",
+    "verdict2": "same",
+    "kind": "inconsistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "A",
+    "letter2": "equivalent",
+    "verdict1": "worse",
+    "verdict2": "same",
+    "kind": "inconsistent"
+  },
+  {
+    "op": "reverse",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "equivalent",
+    "letter2": "equivalent",
+    "verdict1": "same",
+    "verdict2": "same",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "equivalent",
+    "letter2": "equivalent",
+    "verdict1": "same",
+    "verdict2": "same",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "A",
+    "verdict1": "improved",
+    "verdict2": "improved",
+    "kind": "consistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "B",
+    "verdict1": "improved",
+    "verdict2": "worse",
+    "kind": "position_locked"
+  },
+  {
+    "op": "narrow",
+    "letter1": "B",
+    "letter2": "equivalent",
+    "verdict1": "improved",
+    "verdict2": "same",
+    "kind": "inconsistent"
+  },
+  {
+    "op": "narrow",
+    "letter1": "equivalent",
+    "letter2": "B",
+    "verdict1": "same",
+    "verdict2": "worse",
+    "kind": "inconsistent"
+  }
+]

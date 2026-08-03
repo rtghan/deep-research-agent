@@ -578,3 +578,64 @@ Each time the fix had to move from the prompt into code, and each time the code 
 **A likely root cause, and the more interesting reading.** The challenger's system prompt ends *"Do not be agreeable... look hard first."* We have explicitly instructed it to always find fault. Declaring a stalemate is a *concession*, which conflicts with the role it was given — so the adversarial framing may be self-defeating for convergence: an agent told its job is to find what is wrong will find something wrong, every time, forever. If that is right, oscillation is not a memory failure but a **role failure**, and the fix is to give the critic genuine permission to approve — or to accept that a permanently adversarial critic must be bounded structurally rather than persuaded. This is testable: run the same harness with the adversarial framing softened and see whether stalemates appear.
 
 **What it did not solve.** n=12 claims from 2 test cases is small; the effect would have to be large to show up, and a modest real effect could hide in that noise. The role-failure hypothesis above is untested. And the deeper question D028 raised is still open: whether non-convergence on genuinely contested claims is a *defect* at all, or the correct behaviour finally made visible.
+
+---
+
+## D030 — Offline ablations: the calibration "result" was an arithmetic bug, and two config knobs are inert **[S2] [S4]**
+
+**The problem.** Two claims in the project rested on unexamined assumptions: (a) that calibration improved because claim evolution contributed informative new signals, and (b) that the router's four hand-tuned thresholds were meaningfully tuned. D005 explicitly concedes "hand-tuned, no sensitivity analysis." Both are answerable **without a single API call**, by replaying stored run state — which makes not having done it harder to defend than doing it.
+
+**Ablation 1 — confidence formula, over the same 582 stored claims.**
+
+| formula | ECE | mean conf | max |
+|---|---|---|---|
+| F1 old 2-signal (weights sum to 0.8) | 0.327 | 0.665 | 0.80 |
+| F2 same two signals, rescaled to sum 1.0 | **0.163** | 0.831 | 1.00 |
+| F3 full 4-signal (shipped) | 0.162 | 0.823 | 1.00 |
+| F4 4-signal minus `reasoning_score` | **0.153** | 0.837 | 1.00 |
+| F5 4-signal minus `evidence_balance` | 0.175 | 0.817 | 1.00 |
+
+**The 0.8 ceiling accounts for 100% of the improvement.** F1→F2 is −0.164. F2→F3 — the entire contribution of both evolution-derived signals — is **−0.0004**. The earlier reading, that Track C improved Track B's calibration as a side effect, is **refuted by this ablation**. The whole gain came from a one-line arithmetic defect: a weighted sum whose weights summed to 0.8, making a system that is right 92–100% of the time structurally incapable of saying so.
+
+Worse for the shipped formula: **removing `reasoning_score` entirely improves ECE** (0.162 → 0.153). Only `evidence_balance` earns its weight (0.162 → 0.175 when dropped). `reasoning_score` is load-bearing for *routing* — it decides `refine` and gates reversals — but it is calibration-neutral-to-harmful, and the two roles were being conflated.
+
+**Ablation 2 — routing threshold sensitivity, replaying 715 real challenge records** through `route_operation` (a pure function, so the sweep is free):
+
+| knob | shipped | decisions changed across its full plausible range |
+|---|---|---|
+| `nuance_balance_threshold` | 0.5 | **0 / 715 (0.0%)** across 0.2–0.8 |
+| `reasoning_soundness_threshold` | 0.6 | 0 across 0.45–0.75; 7 (1.0%) only at 0.9 |
+| `min_sources_for_reversal` | 2 | 28 (3.9%) vs. disabled |
+| `reversal_balance_threshold` | −0.3 | 43 (6.0%) vs. −0.5 |
+
+**Two of the four knobs are effectively dead config.** `nuance_balance_threshold` has *no effect anywhere in its range* — the reversal gate is checked first and the verdict-driven `narrow` branch absorbs everything else, so the threshold never binds. `reasoning_soundness_threshold` is nearly as inert. The routing behaviour is almost entirely determined by `reversal_balance_threshold` and `min_sources_for_reversal`. Also confirmed: `refine` fires exactly once under *every* configuration tested — it is structurally unreachable, not merely mistuned, which closes the question D023 left open.
+
+**What we changed.** Nothing yet, deliberately — these are findings about the existing system and changing the formula now would invalidate the runs already reported. What they license: delete or reorder `nuance_balance_threshold`, drop `reasoning_score` from the confidence formula while keeping it in routing, and stop describing the calibration gain as a claim-evolution benefit.
+
+**What it did not solve.** ECE still uses the partially circular proxy from D008. And the sweep measures how many *decisions* change, not whether the changed decisions are *better* — a knob could be inert and still correct, or influential and wrong.
+
+---
+
+## D031 — The judge has a 69% position preference; the order randomisation was load-bearing **[S2]**
+
+**The problem.** "81.7% of revisions judged improvements" is a headline in the README, D022, and the presentation, produced by a single LLM doing a pairwise A/B comparison. If that judge has a position preference, the number measures label placement rather than quality. `judge_revision` randomises A/B order per call — but randomisation protects the *aggregate* from a constant bias while telling you nothing about whether the judge is reliable at all.
+
+**What we did.** Took 30 real before/after revision pairs and put each to the judge **twice with the order deliberately flipped**. A reliable judge returns the same substantive verdict both ways; a position-biased one returns the same *letter* both ways, which flips the substantive verdict. Controlling the order — rather than randomising it — is the only way to separate those.
+
+**What it produced.**
+
+| | n=30 pairs, 60 calls |
+|---|---|
+| substantively consistent under flip | 17 (**56.7%**) |
+| **position-locked** (same letter both orders) | 9 (**30.0%**) |
+| inconsistent | 4 (13.3%) |
+| letter chosen | A=16, B=36 → **69% prefer "B"** |
+| test–retest vs. stored verdict (temp 0.3) | 70% |
+
+**The judge is materially unreliable**: it agrees with itself only 57% of the time when the same comparison is presented in reverse, and 30% of its verdicts are determined by *where the text sat* rather than what it said. It systematically prefers the second option presented.
+
+**But the randomisation turns out to be load-bearing, and that is the useful finding.** A pure B-preference with 50/50 order randomisation yields ~50% "improved" by construction, because the revision occupies slot B only half the time. We observe **81.7%**, far above that floor — so there is substantial real signal, and the randomisation successfully converted a systematic bias into noise. Had the judge been implemented with fixed ordering (the obvious way), a 69% B-preference would have manufactured a headline number that was almost entirely artifact. That design choice was made defensively without evidence; it now has evidence.
+
+**What this costs the headline number.** The 81.7% is directionally supported but noisier than it looks: roughly 30% of the judgments contributing to it are effectively coin flips. It should be reported with the 17.9% "worse" rate beside it and never quoted as a precise figure. The correct framing is "a clear majority of revisions are improvements," not "81.7% are."
+
+**What it did not solve.** n=30 is small. The fix for a noisy judge is ensembling (3–5 calls with shuffled order, majority vote), which trades cost for reliability and was not run. Human adjudication of a sample — especially of the 9 position-locked cases — remains the only way to know which way those actually should have gone.

@@ -80,6 +80,17 @@
 - Asymmetry worth calling out: the reviser can *escalate* to `retract` if it finds the claim unsalvageable while rewriting, but cannot *downgrade* an assigned reversal into something more convenient.
 - Every non-retract revision is **re-verified**, so `support_score` always describes the current text.
 - Two unit-tested adversarial cases to name: a challenger demanding `needs_reversal` on a claim the evidence still favors gets downgraded to `narrow`; an `unsupported` verdict without dominant refuting evidence gets `narrow`, not `retract`.
+- **Sensitivity analysis, free, by replaying 715 stored challenges** through the router (it's a pure function). This is the answer to "where do your thresholds come from?":
+
+| knob | shipped | decisions changed across its full range |
+|---|---|---|
+| `nuance_balance_threshold` | 0.5 | **0 / 715 (0.0%)** across 0.2–0.8 |
+| `reasoning_soundness_threshold` | 0.6 | 0 across 0.45–0.75 |
+| `min_sources_for_reversal` | 2 | 28 (3.9%) |
+| `reversal_balance_threshold` | −0.3 | 43 (6.0%) |
+
+- **Two of my four knobs are dead config** — `nuance_balance_threshold` never binds, because the reversal gate runs first and the verdict-driven `narrow` absorbs the rest. Behaviour is set almost entirely by two constants, not four. Say this before they find it; "I swept them and two do nothing" is a much better answer than a defence of all four.
+- It also closes an open question: `refine` fires exactly once under **every** configuration tested, so it is structurally unreachable rather than mistuned.
 
 ### Slide 8 — Memory & context (§2.1 dimension)
 - **State lives in Pydantic, not in a context window** (D001). Each agent sees only its own inputs; the orchestrator decides what's visible. No agent ever sees full pipeline state. Zero context-overflow errors across every run.
@@ -136,6 +147,16 @@
   3. blind, order-randomized pairwise judge — structurally different question, so it can't inherit that conflation
   4. paired ablation + McNemar's exact test — isolates one variable
 - Then name the circularity before they do: **verifier, challenger, and judge are all LLMs, and the judge reuses the challenger's client.** No independent ground truth exists anywhere in the stack.
+- **I tested the judge itself, and it is materially unreliable** — 30 real pairs put to it twice with the order deliberately flipped:
+
+| | n=30 |
+|---|---|
+| consistent under flip | 17 (56.7%) |
+| **position-locked** (same letter either way) | 9 (**30.0%**) |
+| letter preference | A=16 vs B=36 → **69% prefer "B"** |
+
+- **And that retroactively justifies a design choice.** `judge_revision` randomises A/B order per call. A pure B-preference under 50/50 randomisation yields ~50% "improved" *by construction*; we observe 81.7%, well clear of that floor — so real signal dominates. Written the obvious way, with fixed ordering, a 69% B-preference would have manufactured nearly the whole headline. That was defensive guesswork when I wrote it; it now has evidence.
+- Consequence, stated before they push: **81.7% is "a clear majority," not a precise figure**, and it travels with the 17.9% worse rate. The fix is ensembling (3–5 shuffled calls, majority vote); not run.
 - The `support_lift` story in one line — a metric that turned out to be measuring the wrong thing, caught by triangulating with a second metric. Full version in appendix A4.
 
 ### Slide 14 — Track A: adaptive vs. uniform
@@ -156,8 +177,21 @@
 | post-evolution, 4-signal formula (4 cases) | **0.194** | 0.788 |
 | post-evolution, 4-signal formula (7 cases) | **0.184** | 0.810 |
 
-- Mechanism: the 4-signal formula (`0.35·support + 0.25·reasoning + 0.20·diversity + 0.20·balance`) has weights summing to **1.0**, removing the ceiling, and adds two signals that only exist because of claim evolution. **Track C improved Track B's calibration as a side effect** — the reasoning score and evidence balance are genuinely informative about whether a claim is right.
-- ⚠️ **State the caveat yourself:** these are different runs, so it is not a clean ablation — the formula changed *and* evolution was added *and* the challenge budget differed. The ceiling removal is arithmetic rather than empirical, which makes it the most plausible driver, but isolating it needs the 4-signal formula run with evolution disabled. Cheap; not done.
+- Across-run numbers are confounded (formula, evolution, and budget all changed at once), which is why the offline ablation below exists — and why its answer is not the one I expected.
+
+- **I then ran the clean ablation, and it refuted my own explanation.** Recomputing confidence offline over the *same 582 stored claims* removes every confound but the formula:
+
+| formula | ECE | mean conf | max |
+|---|---|---|---|
+| F1 old 2-signal (0.8 ceiling) | 0.327 | 0.665 | 0.80 |
+| F2 same 2 signals, rescaled to sum 1.0 | **0.163** | 0.831 | 1.00 |
+| F3 full 4-signal (shipped) | 0.162 | 0.823 | 1.00 |
+| F4 4-signal minus `reasoning` | **0.153** | 0.837 | 1.00 |
+| F5 4-signal minus `balance` | 0.175 | 0.817 | 1.00 |
+
+- **The ceiling accounts for 100% of the gain.** F1→F2 is −0.164; F2→F3, the entire contribution of the two evolution-derived signals, is **−0.0004 — nothing.** My earlier claim that "Track C improved Track B's calibration as a side effect" is **wrong, and I caught it by testing it.** The whole improvement was a one-line arithmetic bug: weights that summed to 0.8 instead of 1.0.
+- It gets slightly worse for the story: **dropping `reasoning_score` entirely *improves* ECE** (0.162 → 0.153). Only `evidence_balance` earns its place (0.162 → 0.175 when removed). So the shipped formula carries one signal that is calibration-neutral-to-harmful.
+- What to say: *the honest version of this slide is that I found a bug, mistook it for a result, then ran the ablation that told me which it was.* That is the process working — and it is worth more than the result I thought I had.
 - Fix you'd still make: temperature scaling or isotonic regression on held-out data. You know exactly what it is; you didn't have the labels.
 
 ### Slide 16 — Track C: does evolution actually improve claims?
@@ -288,7 +322,9 @@ Ordered by expected value, each with its reason:
 - **A9** — Plain Python vs. LangGraph/CrewAI (D015) and what it cost.
 - **A10** — Test-case suite: 7 cases, what each stresses, and how they map onto the brief's four examples.
 - **A11** — Frozen-pool convergence in full: both conditions, all 5 passes, the oscillation instrumentation, and the harness's own failure (its auto-printed verdict line concluded "the process settles on its own" — a bad comparison falling through to an else-branch when *neither* condition converges). Kept in TESTING.md rather than quietly fixed, because trusting a summary line over its own data is exactly the failure mode worth recording.
-- **A12** — Challenger memory (D029): the full A/B, the verified-working plumbing, and the "role failure vs. memory failure" hypothesis.
+- **A12** — Offline ablations (D030): confidence-formula decomposition and the full threshold sweep, including the two inert knobs.
+- **A12b** — Judge reliability (D031): the flip-order contingency table and why randomisation was load-bearing.
+- **A12c** — Challenger memory (D029): the full A/B, the verified-working plumbing, and the "role failure vs. memory failure" hypothesis.
 - **A13** — The scheduler (D027): marginal value as a *product* of uncertainty × yield × (1 − oscillation) × coverage, why a product rather than a weighted sum (any near-zero term should veto, not be averaged away), and why `pool == n_sub_questions` makes the uniform baseline a parameter rather than a separate code path.
 
 ## Anticipated hard questions
@@ -296,7 +332,8 @@ Ordered by expected value, each with its reason:
 - *"Your judge reuses the challenger's client — isn't the whole quality stack circular?"* → Yes, and it's limitation #1 of the eval design. Bounded by the mechanical tier and the paired design. The honest fix is human labels on a sample of the 93 "worse" verdicts.
 - *"81.7% improved — judged by what?"* → Blind, order-randomized pairwise against the evidence pool. Name the residual bias and the 17.9% made-worse rate. Don't let the 81.7% travel alone.
 - *"Why not just use a bigger model?"* → Orthogonal. 22% ungrounded refutation is a *property* failure, not a capability failure — a bigger model still isn't guaranteed to emit a verbatim substring. That's the whole argument for coding the property.
-- *"Where do the reversal thresholds come from?"* → Hand-set, tuned against the pre/post-fix table. Not learned. Say it plainly; then say what learning them would take.
+- *"Where do the reversal thresholds come from?"* → Hand-set, and I swept all four over 715 stored challenges: two of them change **zero** decisions across their entire plausible range. Behaviour is set by `reversal_balance_threshold` and `min_sources_for_reversal` alone. Not learned; here's what learning them would take.
+- *"You said evolution improved calibration — did it?"* → No, and I proved it didn't. The offline formula ablation shows the entire gain came from removing an arithmetic ceiling (weights summing to 0.8); the evolution-derived signals contribute −0.0004. I had it wrong in an earlier draft and the ablation caught it.
 - *"Only 1 of 35 sub-questions reached 3 rounds — is evolution doing anything?"* → Separate the claims. Single-round evolution is heavily exercised (570 revisions, 715 challenges). *Multi-round convergence* is what's untested. Don't let these merge.
 - *"When do you stop searching?"* → Confidence threshold; and be upfront that it's absolute, not marginal-gain — same root cause as weakness #2 and #4.
 - *"Did evolution ever make the report worse?"* → Yes: 17.9% of judged revisions, and `reverse` is still net-negative on support. Point at the operation-level breakdown rather than defending the aggregate.

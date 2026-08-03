@@ -1,0 +1,9 @@
+{
+  "confidence_formula_ece": {
+    "F1 old 2-signal (0.8 ceiling)": 0.32677835051546394,
+    "F2 2-signal rescaled to 1.0": 0.16276847079037798,
+    "F3 full 4-signal (shipped)": 0.1624112256586482,
+    "F4 4-signal, no reasoning": 0.15312829324169533,
+    "F5 4-signal, no balance": 0.1752352233676975
+  }
+}

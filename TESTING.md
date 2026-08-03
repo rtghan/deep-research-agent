@@ -306,3 +306,64 @@ Built it: the challenge prompt now carries the claim's recent revision history (
 **The more interesting reading.** The challenger's prompt ends *"Do not be agreeable."* We instructed it to always find fault, so a stalemate is a concession against its assigned role. Oscillation may therefore be a **role failure rather than a memory failure** — an agent told to find what's wrong will find something wrong, forever. Testable by softening the adversarial framing and re-running the same harness; not done.
 
 *(Harness caution, second occurrence: the script's auto-printed verdict read "reduces churn modestly; partially a memory problem" — purely an artifact of a hard-coded threshold falling through to a middle branch. The table is the reading. Both convergence scripts have now produced a summary line more confident than its own data, which is its own small lesson about generated conclusions.)*
+
+---
+
+## 17. Four ablations, two of them free
+
+Chosen deliberately by value-per-dollar. The two most informative required **zero API calls** — they replay stored run state — which is worth noting on its own: after ~$3 of real-model evaluation, the sharpest findings came from re-reading data already on disk.
+
+### 17.1 Confidence formula (offline, 582 stored claims)
+
+§15 reported ECE roughly halving and attributed it to claim evolution contributing new signals. That comparison was confounded three ways (formula, evolution, and challenge budget all changed between runs). Recomputing confidence over the *same* claims isolates the formula:
+
+| formula | ECE | mean conf | max |
+|---|---|---|---|
+| F1 old 2-signal (weights sum to 0.8) | 0.327 | 0.665 | 0.80 |
+| F2 same two signals, rescaled to 1.0 | **0.163** | 0.831 | 1.00 |
+| F3 full 4-signal (shipped) | 0.162 | 0.823 | 1.00 |
+| F4 4-signal minus `reasoning_score` | **0.153** | 0.837 | 1.00 |
+| F5 4-signal minus `evidence_balance` | 0.175 | 0.817 | 1.00 |
+
+**My explanation was wrong.** F1→F2 (ceiling removal alone) = −0.164. F2→F3 (both evolution signals) = **−0.0004**. The entire gain was a one-line arithmetic defect — weights summing to 0.8 — which made a system right 92–100% of the time incapable of expressing that. Nothing to do with claim evolution.
+
+And `reasoning_score` makes calibration *slightly worse* (0.162 → 0.153 without it). It earns its keep in routing, not in confidence; those two roles had been conflated.
+
+This is the fourth self-correction in this log, and the cheapest: it cost nothing and caught a claim that had already reached the presentation outline.
+
+### 17.2 Routing threshold sensitivity (offline, 715 stored challenges)
+
+`route_operation` is a pure function, so every hand-tuned constant can be swept for free. D005 concedes "hand-tuned, no sensitivity analysis" — this is it:
+
+| knob | shipped | decisions changed across its full range |
+|---|---|---|
+| `nuance_balance_threshold` | 0.5 | **0 / 715 (0.0%)** across 0.2–0.8 |
+| `reasoning_soundness_threshold` | 0.6 | 0 across 0.45–0.75; 7 (1.0%) at 0.9 |
+| `min_sources_for_reversal` | 2 | 28 (3.9%) vs. disabled |
+| `reversal_balance_threshold` | −0.3 | 43 (6.0%) vs. −0.5 |
+
+**Two of four knobs are dead config.** `nuance_balance_threshold` has no effect *anywhere* — the reversal gate runs first and the verdict-driven `narrow` branch absorbs the rest, so it never binds. Behaviour is almost entirely set by `reversal_balance_threshold` and `min_sources_for_reversal`. Also settles an open question: `refine` fires exactly once under *every* configuration, so it is structurally unreachable rather than mistuned.
+
+Nothing changed as a result — altering the formula now would invalidate the runs already reported — but it converts "where do your thresholds come from?" from a shrug into a curve.
+
+### 17.3 Judge position bias (30 pairs, 60 calls)
+
+The 81.7% "improved" figure is a headline resting entirely on one LLM's pairwise judgement. Put each real before/after pair to the judge **twice with the order flipped** — a reliable judge gives the same substantive verdict, a biased one gives the same *letter*:
+
+| | n=30 |
+|---|---|
+| consistent under flip | 17 (**56.7%**) |
+| **position-locked** | 9 (**30.0%**) |
+| inconsistent | 4 (13.3%) |
+| letter preference | A=16 vs B=36 → **69% prefer "B"** |
+| test–retest vs stored verdict | 70% |
+
+**The judge is materially unreliable** — 57% self-agreement, 30% of verdicts decided by placement. But this **retroactively validates a design choice**: `judge_revision` randomises A/B order per call, and a pure B-preference under 50/50 randomisation produces ~50% "improved" by construction. We observe 81.7%, well above that floor, so real signal dominates — and had the judge been written the obvious way, with fixed ordering, a 69% B-preference would have manufactured almost the entire headline. The randomisation was defensive guesswork; it now has evidence.
+
+Consequence: 81.7% should be reported as "a clear majority," always beside the 17.9% worse rate, never as a precise figure. The fix is ensembling (3–5 shuffled calls, majority vote); not run.
+
+### 17.4 What was considered and not run, and why
+
+- **Three-way `threshold` vs `scheduler` vs uniform** — the highest-value *remaining* test, and the one the Track A headline needs. Deferred purely on cost: 3 configs × N cases at ~$0.50–2 per sweep.
+- **2×2 self-agreement crossover** — settles D026's confound, but needs a fresh claim set authored by the second model before the crossover is even possible.
+- **Noisy-retrieval injection (D019)** and **prompt-injection** — both cheap and both still open; prompt injection in particular would convert a named weakness into a measured one, which is strictly better than declaring it.
