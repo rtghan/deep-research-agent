@@ -41,6 +41,25 @@ class LLMResponse:
         return self.input_tokens + self.output_tokens
 
 
+def _extract_message_text(resp, default: str) -> str:
+    """
+    Pull the completion text out of an API response defensively.
+
+    `resp.choices[0].message.content` assumes a well-formed response, but a
+    provider can return HTTP 200 with `choices: null` — observed with
+    deepseek-chat via OpenRouter during real-model testing (a soft failure
+    that doesn't raise an exception the SDK would catch). This is a system
+    boundary: treat a missing/empty response the same as an empty completion
+    rather than crashing the whole pipeline on one bad call.
+    """
+    choices = getattr(resp, "choices", None)
+    if not choices:
+        return default
+    message = getattr(choices[0], "message", None)
+    content = getattr(message, "content", None) if message else None
+    return content or default
+
+
 def _extract_json_from_text(text: str) -> dict:
     """
     Best-effort extraction of a JSON object from a free-form LLM response.
@@ -106,7 +125,7 @@ class LLMClient:
             max_tokens=self.max_tokens,
         )
         latency = (time.time() - start) * 1000
-        text = resp.choices[0].message.content or ""
+        text = _extract_message_text(resp, default="")
         usage = resp.usage
         return LLMResponse(
             text=text,
@@ -149,7 +168,7 @@ class LLMClient:
                 max_tokens=self.max_tokens,
             )
         latency = (time.time() - start) * 1000
-        text = resp.choices[0].message.content or "{}"
+        text = _extract_message_text(resp, default="{}")
         usage = resp.usage
         llm_resp = LLMResponse(
             text=text,

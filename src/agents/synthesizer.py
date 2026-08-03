@@ -27,9 +27,19 @@ from src.tools.base import LLMClient
 SYNTHESIS_SYSTEM = """You are a research synthesizer. Given verified claims with confidence scores and evidence, write a structured research report.
 
 Rules:
-- Only present claims as facts if their confidence is above 0.6.
-- For claims below 0.6 confidence, frame them as uncertain: "Evidence suggests..." or "There is disagreement about..."
-- Always cite sources inline: [Source: paper title]
+- EVERY claim you state must carry an explicit confidence marker, in this exact
+  format, at the end of the sentence:
+      [confidence: 0.72 · supported · Source: paper title]
+  Use the confidence value and verification status given for that claim in the
+  input. Never invent a confidence value, and never omit the marker — a reader
+  must be able to tell a 0.95 claim from a 0.55 one at a glance, without
+  inferring it from your word choice.
+- In ADDITION to the marker, match your language to the confidence:
+  above 0.6 may be stated directly; at or below 0.6 must also be framed as
+  uncertain ("Evidence suggests...", "One source reports...").
+- The Executive Summary is the exception: write it as prose without inline
+  markers, but do not assert anything there that is below 0.6 confidence
+  without hedging it.
 - If claims contradict each other, present both sides explicitly.
 - If a sub-question has insufficient evidence, say so in a "Known Gaps" section.
 - Be precise and quantitative where possible.
@@ -38,6 +48,8 @@ Rules:
   Report the CURRENT text. Where a claim was reversed or retracted, say so in
   the "How Claims Changed" section: a research process that corrected itself is
   a finding, not an embarrassment to hide.
+
+Every factual sentence in Findings must end with its confidence marker. A report where the reader cannot tell how sure the system is about each individual claim has failed its main purpose.
 
 Output a markdown report with these sections:
 ## Executive Summary
@@ -52,12 +64,91 @@ Output a markdown report with these sections:
 Omit "How Claims Changed" only if no claim was revised."""
 
 
+def _render_confidence_index(state, active_claims, evidence_map) -> str:
+    """
+    Deterministically append every claim with its calibrated confidence.
+
+    WHY THIS IS CODE AND NOT A PROMPT INSTRUCTION. The brief's one hard
+    formatting requirement is that the output "indicate how confident it is in
+    each claim". That was first attempted by instructing the synthesizer to emit
+    an inline `[confidence: 0.72 · supported · Source: …]` marker on every
+    claim — explicitly, in a fixed format, stated twice in the system prompt.
+    A real run (gpt-4o-mini) emitted ZERO of them. The model kept the `[Source:]`
+    attribution it had been doing all along and silently dropped the new part.
+
+    This is the same lesson quote-grounding taught in D022: when a property must
+    hold, asking a model nicely does not make it hold. So the index is rendered
+    from `state.claims` in code — it cannot be dropped, cannot be miscopied, and
+    cannot drift from the confidence the system actually computed. The prompt
+    instruction is retained as a best-effort improvement to the prose, but the
+    requirement is satisfied here regardless of whether the model complies.
+
+    It also surfaces information the prose has no good place for: which claims
+    were revised, and which were retracted outright.
+    """
+    if not active_claims:
+        return ""
+
+    lines = [
+        "\n\n---\n",
+        "## Claim Confidence Index\n",
+        "_Generated directly from the system's internal state, not written by the "
+        "report model — every claim the report draws on, with the confidence the "
+        "system actually assigned it._\n",
+    ]
+
+    by_sq = {}
+    for c in active_claims:
+        by_sq.setdefault(c.sub_question_id or "unassigned", []).append(c)
+
+    sqs = state.plan.sub_questions if state.plan else []
+    for sq in sqs:
+        claims = by_sq.get(sq.sq_id, [])
+        if not claims:
+            continue
+        lines.append(f"\n**{sq.question}**\n")
+        lines.append("| Confidence | Status | Claim | Sources |")
+        lines.append("|---|---|---|---|")
+        for c in sorted(claims, key=lambda x: -(x.confidence or 0.0)):
+            sources = []
+            for eid in c.evidence_ids:
+                chunk = evidence_map.get(eid)
+                if chunk and chunk.source_title not in sources:
+                    sources.append(chunk.source_title)
+            src = "; ".join(s[:60] for s in sources[:3]) or "no source"
+            status = c.verification_status or "unverified"
+            if c.revisions:
+                status += f" (v{c.version}, {c.revisions[-1].operation})"
+            text = (c.text or "").replace("|", "\\|")
+            lines.append(f"| {c.confidence or 0.0:.2f} | {status} | {text} | {src} |")
+
+    retracted = [c for c in state.claims if c.status == "retracted"]
+    if retracted:
+        lines.append(
+            f"\n**Retracted during verification ({len(retracted)})** — extracted "
+            f"from evidence, then withdrawn when challenged. Not used in the report above.\n"
+        )
+        for c in retracted:
+            reason = c.revisions[-1].rationale if c.revisions else ""
+            lines.append(f"- ~~{(c.text or '')[:180]}~~ — {reason[:160]}")
+
+    return "\n".join(lines) + "\n"
+
+
 def synthesize(
     state: ResearchState,
     llm: LLMClient,
     config: Config,
+    critique=None,
 ) -> None:
-    """Produce the final research report from verified claims."""
+    """
+    Produce the final research report from verified claims.
+
+    When `critique` is supplied (a ReportCritique from the report-level
+    self-correction loop, Phase 5), this is a REWRITE: the previous report's
+    diagnosed defects are appended to the prompt so the synthesizer fixes them
+    rather than reproducing them.
+    """
     # Retracted claims are excluded from the report body — the system withdrew
     # them — but their retraction is reported in "How Claims Changed" below.
     active_claims = [c for c in state.claims if c.is_active]
@@ -144,13 +235,35 @@ def synthesize(
                         f"{', flaws: ' + ', '.join(rev.flaws) if rev.flaws else ''}\n\n"
                     )
 
+    # Rewrite mode: a previous version of this report was reviewed and found
+    # wanting. Give the synthesizer the specific defects so it fixes them
+    # instead of regenerating the same prose from the same claims.
+    instruction = "Synthesize a research report from the following verified claims:"
+    if critique is not None:
+        instruction = (
+            "You previously wrote a report from these claims and it was reviewed. "
+            "Rewrite it, fixing the specific defects listed below. Keep what was "
+            "working; do not introduce claims that are not in the list."
+        )
+        context += "\n# Review of your previous draft — fix these\n\n"
+        if not critique.answers_the_question:
+            context += (
+                "- OVERALL: the previous draft did not actually answer the original "
+                "question. Lead with a direct answer.\n"
+            )
+        for d in critique.defects:
+            sq_str = f" [{d.sub_question_id}]" if d.sub_question_id else ""
+            context += f"- ({d.severity}) {d.defect_type}{sq_str}: {d.detail}\n"
+        if critique.revision_instructions:
+            context += f"\nReviewer's directions: {critique.revision_instructions}\n"
+
     with Timer() as timer:
         resp = llm.complete(
             system=SYNTHESIS_SYSTEM,
-            user=f"Synthesize a research report from the following verified claims:\n\n{context}",
+            user=f"{instruction}\n\n{context}",
         )
 
-    state.report = resp.text
+    state.report = resp.text + _render_confidence_index(state, active_claims, evidence_map)
 
     log_step(
         state,

@@ -487,6 +487,55 @@ Splitting diagnosis (challenger) from repair (reviser) means the router — not 
 
 See DECISIONS.md D020/D021 for the design rationale and the self-agreement-bias ablation.
 
+### 9.7 Query Reformulator — `src/agents/query_reformulator.py`
+
+```python
+reformulate_query(state, sq, round_num, llm, config) → (query, rationale, gap)
+```
+
+Fixes a concrete defect found in the 7-test-case evaluation: `research_sub_question` passed `sq.question` **verbatim** to arXiv and web search on *every* round, so round 3 issued the identical query round 1 did and only paged deeper into the same ranked results. Extra rounds added evidence *volume*, not new *angles* — a large part of why accumulating rounds barely moved confidence (D023).
+
+- Round 1 uses the sub-question verbatim; rounds 2+ generate a query targeting what earlier rounds missed.
+- **Context compaction:** the reformulator never sees the raw evidence pool (hundreds of chunks, growing each round). It sees a digest built from `SubQuestion.retrieval_attempts` — prior queries, returned source titles, and how the resulting claims scored — plus the weakest standing claims. Cheap enough to run every round.
+- Guards against the two degenerate outputs (empty query; echoing a previously-tried query) by falling back to the sub-question and logging it.
+- Every attempt is recorded to `sq.retrieval_attempts`, making the whole search trajectory auditable in `state.json` rather than invisible inside a loop.
+
+### 9.8 Report Critic — `src/agents/report_critic.py`
+
+```python
+critique_report(state, mechanical_defects, llm, config, pass_num) → ReportCritique
+```
+
+The only stage that asks whether the **assembled report** answers the question that was actually asked. Everything upstream is per-claim: the verifier asks "does the evidence entail this claim," the challenger asks "is this claim warranted." A report built entirely from well-verified claims can still bury the answer, overstate a 0.4-confidence claim, skip a sub-question, or cite a retracted claim. Runs on an **independent model** (reuses the challenger's client).
+
+Emits `verdict ∈ {accept, revise_report, needs_more_research}`, a list of typed `ReportDefect`s, and — for `needs_more_research` — actionable `ResearchGap`s naming *what to go find*. A `needs_more_research` verdict with no actionable gap is downgraded to `revise_report` rather than triggering a directionless reopen.
+
+---
+
+## 9A. Phase 5: Report Self-Correction — `src/orchestrator/report_loop.py`
+
+```python
+run_report_correction(state, synth_llm, critic_llm, sub_llm, challenger_llm, reviser_llm, config) → None
+```
+
+**Two tiers of error detection.** Tier 1 is `mechanical_checks()` — deterministic, LLM-free, and run *first*:
+
+| Check | Detection |
+|---|---|
+| Retracted claim still asserted | fuzzy word-overlap (≥0.8) of a retracted claim against report paragraphs — a hard error |
+| Sub-question with zero surviving claims | `active_claims_for(sq) == []`, severity raised if no gaps section exists |
+| Thin sub-question | avg confidence below `thin_confidence_threshold` |
+| Contradictions detected but never discussed | `state.contradictions` non-empty, no "contradict"/"disagree" in report |
+
+These findings are passed to the critic as *established facts*, so the LLM spends attention on judgment calls (overstatement, burial, "does this answer the question") instead of re-deriving what a substring check already proved.
+
+**The join with query reformulation.** On `needs_more_research`, each gap's `what_to_find` is written into the target sub-question's `retrieval_attempts[-1].gap_noted` — which the reformulator (§9.7) already consumes. The critic says *what's missing*; the reformulator turns it into *a different query*; `retrieval_attempts` is the compacted memory of what was already tried. That is the Search-R1 "learn from retrieval mistakes" loop closing end-to-end.
+
+**Three independent brakes**, because a loop that can reopen retrieval is the most expensive thing in the pipeline:
+1. `max_passes` (default 2) — hard cap.
+2. **One reopen per sub-question, ever** — afterwards it can only be fixed by rewriting.
+3. `stop_when_not_improving` — a pass that doesn't reduce high-severity defects stops the loop. D023 established that a critic finding *more* fault is not evidence it is right, so "keeps complaining" must terminate rather than justify another pass.
+
 ---
 
 ## 10. Retrieval Tools: `src/tools/`

@@ -54,6 +54,24 @@ evolution:
   reversal_balance_threshold: -0.3
   reasoning_soundness_threshold: 0.6
 
+report_correction:
+  # Phase 5: critique the finished report and fix it. Everything before this
+  # improves individual claims; this is the only stage that asks whether the
+  # ASSEMBLED report answers the question that was actually asked.
+  enabled: true
+  # Empty = reuse the evolution challenger's client, which is already a
+  # different model from the synthesizer. A critic reviewing its own prose
+  # ratifies it, and report-level defects are the ones users actually see.
+  critic_model: ""
+  max_passes: 2
+  # Allow the critic to reopen retrieval when the evidence base itself (not the
+  # writing) is inadequate. Capped at one reopen per sub-question regardless.
+  allow_research_reopen: true
+  thin_confidence_threshold: 0.45
+  # Stop if a pass fails to reduce high-severity defects — a critic that keeps
+  # finding fault is not evidence it is right (TESTING.md section 11).
+  stop_when_not_improving: true
+
 synthesis:
   include_gaps: true
   output_format: "markdown"

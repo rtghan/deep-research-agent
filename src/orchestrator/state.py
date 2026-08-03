@@ -90,6 +90,24 @@ class Claim(BaseModel):
         return self.status == "active"
 
 
+class RetrievalAttempt(BaseModel):
+    """
+    What one retrieval round actually searched for, and what it got back.
+
+    Kept per-round so a later round can condition its query on what has already
+    been tried instead of re-issuing the same search (see
+    src/agents/query_reformulator.py). This is also the compaction unit: a
+    short digest of prior attempts is far cheaper to feed into a reformulation
+    prompt than the accumulated raw evidence pool.
+    """
+    round_num: int
+    query: str
+    rationale: str = ""          # why this query (empty for round 1, verbatim sq)
+    n_chunks: int = 0
+    source_titles: list[str] = Field(default_factory=list)
+    gap_noted: str = ""          # what the reformulator said was still missing
+
+
 class SubQuestion(BaseModel):
     """A node in the research plan DAG."""
     sq_id: str
@@ -99,6 +117,7 @@ class SubQuestion(BaseModel):
     rounds_used: int = 0
     claim_ids: list[str] = Field(default_factory=list)
     sufficient_evidence: bool = True
+    retrieval_attempts: list[RetrievalAttempt] = Field(default_factory=list)
 
 
 class ResearchPlan(BaseModel):
@@ -152,6 +171,53 @@ class Contradiction(BaseModel):
     source_b: str
 
 
+class ReportDefect(BaseModel):
+    """
+    One problem found in the synthesized report.
+
+    Report-level defects are a different category from claim-level ones. The
+    challenger asks "is this claim warranted by evidence"; a report can be built
+    entirely from well-warranted claims and still fail the user — by burying the
+    answer, asserting a 0.4-confidence claim in confident prose, never
+    addressing a sub-question, or quoting a claim that was retracted.
+    """
+    defect_type: str          # overstatement|unsupported_prose|missing_coverage|
+                              # buried_answer|mishandled_contradiction|retracted_claim_cited
+    detail: str
+    sub_question_id: Optional[str] = None
+    severity: str = "medium"  # high|medium|low
+    found_by: str = "critic"  # "mechanical" or "critic" — see report_loop.py
+
+
+class ResearchGap(BaseModel):
+    """
+    A specific thing the critic says is missing from the evidence base.
+
+    `what_to_find` is deliberately actionable text, not a diagnosis: it is
+    written into the target sub-question's retrieval history as a gap note, and
+    the query reformulator (src/agents/query_reformulator.py) consumes it to
+    build a search query that targets the gap. This is the join between
+    report-level self-correction and retrieval-level learning — the critic
+    supplies "what we're missing", the reformulator turns it into "what to
+    search for instead".
+    """
+    sub_question_id: str
+    what_to_find: str
+
+
+class ReportCritique(BaseModel):
+    """One pass of report-level self-correction."""
+    pass_num: int
+    report_version: int          # the report version this critique examined
+    answers_the_question: bool = True
+    verdict: str = "accept"      # accept|revise_report|needs_more_research
+    defects: list[ReportDefect] = Field(default_factory=list)
+    research_gaps: list[ResearchGap] = Field(default_factory=list)
+    revision_instructions: str = ""
+    action_taken: str = "none"   # none|revised|reopened_research
+    critic_model: str = ""
+
+
 class TraceEntry(BaseModel):
     """One entry in the structured JSONL execution trace."""
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -173,6 +239,8 @@ class ResearchState(BaseModel):
     challenges: list[ChallengeRecord] = Field(default_factory=list)
     contradictions: list[Contradiction] = Field(default_factory=list)
     report: Optional[str] = None
+    report_version: int = 1
+    report_critiques: list[ReportCritique] = Field(default_factory=list)
     trace: list[TraceEntry] = Field(default_factory=list)
     total_tokens: int = 0
     total_latency_ms: float = 0.0

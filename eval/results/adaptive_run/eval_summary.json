@@ -1,0 +1,78 @@
+{
+  "tc1_multi_source": {
+    "metrics": {
+      "claim_support_rate": 1.0,
+      "calibration_error": 0.3663,
+      "contradiction_count": 0,
+      "total_claims": 46,
+      "supported_claims": 46,
+      "total_tokens": 32054,
+      "total_latency_ms": 108615.3917,
+      "total_evidence": 38,
+      "avg_confidence": 0.6337,
+      "avg_difficulty": 0.3737,
+      "total_rounds": 5
+    },
+    "query": "Compare the architectural choices in three frontier LLM papers (GPT-4, Llama, Mistral) and what tradeoffs each makes.",
+    "stress_test": "synthesis",
+    "adaptive_enabled": true,
+    "verification_enabled": true
+  },
+  "tc2_contradictory": {
+    "metrics": {
+      "claim_support_rate": 1.0,
+      "calibration_error": 0.4091,
+      "contradiction_count": 0,
+      "total_claims": 55,
+      "supported_claims": 55,
+      "total_tokens": 35493,
+      "total_latency_ms": 131518.4193,
+      "total_evidence": 36,
+      "avg_confidence": 0.5909,
+      "avg_difficulty": 0.3857,
+      "total_rounds": 5
+    },
+    "query": "Trace the evolution of chain-of-thought prompting and identify where researchers disagree about its effectiveness.",
+    "stress_test": "contradiction_detection",
+    "adaptive_enabled": true,
+    "verification_enabled": true
+  },
+  "tc3_sparse": {
+    "metrics": {
+      "claim_support_rate": 0.92,
+      "calibration_error": 0.364,
+      "contradiction_count": 0,
+      "total_claims": 50,
+      "supported_claims": 46,
+      "total_tokens": 32423,
+      "total_latency_ms": 114485.8847,
+      "total_evidence": 50,
+      "avg_confidence": 0.58,
+      "avg_difficulty": 0.4691,
+      "total_rounds": 6
+    },
+    "query": "Compare sparse retrieval (BM25) vs. dense retrieval methods and when each is superior.",
+    "stress_test": "nuanced_reasoning",
+    "adaptive_enabled": true,
+    "verification_enabled": true
+  },
+  "tc4_factual": {
+    "metrics": {
+      "claim_support_rate": 1.0,
+      "calibration_error": 0.3829,
+      "contradiction_count": 0,
+      "total_claims": 38,
+      "supported_claims": 38,
+      "total_tokens": 24662,
+      "total_latency_ms": 83902.554,
+      "total_evidence": 32,
+      "avg_confidence": 0.6171,
+      "avg_difficulty": 0.3699,
+      "total_rounds": 5
+    },
+    "query": "What are the key architectural innovations in the Transformer paper 'Attention Is All You Need'?",
+    "stress_test": "baseline_confidence",
+    "adaptive_enabled": true,
+    "verification_enabled": true
+  }
+}

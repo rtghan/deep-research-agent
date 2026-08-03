@@ -174,5 +174,9 @@ def allocate_budget(state: ResearchState, sq: SubQuestion, config: Config) -> No
         output_summary=f"budget={sq.compute_budget}",
         latency_ms=0,
         cost_tokens=0,
-        metadata={"mode": "adaptive" if adaptive.enabled else "uniform", "budget": sq.compute_budget},
+        metadata={
+            "mode": "adaptive" if adaptive.enabled else "uniform",
+            "budget": sq.compute_budget,
+            "difficulty": sq.difficulty,
+        },
     )

@@ -75,6 +75,15 @@ class Metrics:
     # that never actually discusses the claim.
     dropped_ungrounded_refutations: int = 0
 
+    # --- Report-level self-correction (Phase 5, src/orchestrator/report_loop.py) ---
+    report_version: int = 1              # 1 = accepted as first written
+    report_critique_passes: int = 0
+    report_defects_found: int = 0
+    report_defects_high: int = 0
+    report_defects_mechanical: int = 0   # found without an LLM call
+    report_research_reopened: int = 0    # sub-questions sent back for more evidence
+    report_accepted_first_pass: bool = False
+
     def to_dict(self) -> dict:
         return {k: round(v, 4) if isinstance(v, float) else v for k, v in self.__dict__.items()}
 
@@ -146,6 +155,21 @@ def _compute_evolution_metrics(state: ResearchState, metrics: Metrics) -> None:
     judged_total = metrics.judge_improved_count + metrics.judge_worse_count + metrics.judge_same_count
     if judged_total:
         metrics.judge_improved_rate = metrics.judge_improved_count / judged_total
+
+    # Report-level self-correction
+    metrics.report_version = state.report_version
+    metrics.report_critique_passes = len(state.report_critiques)
+    for crit in state.report_critiques:
+        metrics.report_defects_found += len(crit.defects)
+        metrics.report_defects_high += sum(1 for d in crit.defects if d.severity == "high")
+        metrics.report_defects_mechanical += sum(
+            1 for d in crit.defects if d.found_by == "mechanical"
+        )
+        if crit.action_taken == "reopened_research":
+            metrics.report_research_reopened += len(crit.research_gaps)
+    metrics.report_accepted_first_pass = bool(
+        state.report_critiques and state.report_critiques[0].verdict == "accept"
+    )
 
 
 def compute_metrics(

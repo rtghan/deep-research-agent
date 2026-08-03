@@ -44,6 +44,10 @@ class MockLLMClient:
             return self._mock_revision(user), LLMResponse(text="{}", input_tokens=400, output_tokens=200, latency_ms=45.0)
         elif "comparing two versions" in system.lower():
             return self._mock_judge(user), LLMResponse(text="{}", input_tokens=300, output_tokens=60, latency_ms=30.0)
+        elif "directing a literature search" in system.lower():
+            return self._mock_reformulation(user), LLMResponse(text="{}", input_tokens=200, output_tokens=60, latency_ms=25.0)
+        elif "reviewing a research report" in system.lower():
+            return self._mock_report_critique(user), LLMResponse(text="{}", input_tokens=500, output_tokens=150, latency_ms=50.0)
         else:
             return {"result": "mock"}, LLMResponse(text="{}", input_tokens=50, output_tokens=50, latency_ms=20.0)
 
@@ -231,6 +235,71 @@ class MockLLMClient:
             return {"better": "equivalent", "reasoning": "Mock judge: no meaningful difference."}
         better = "A" if len(a) >= len(b) else "B"
         return {"better": better, "reasoning": "Mock judge: deterministic pairwise pick."}
+
+    def _mock_reformulation(self, user: str) -> dict:
+        """
+        Deterministic query reformulation. Must return something DIFFERENT from
+        the sub-question, or query_reformulator's duplicate-guard rejects it and
+        falls back — which would leave the reformulation path untested in mock
+        runs.
+        """
+        sq = ""
+        for line in user.splitlines():
+            if line.startswith("Sub-question being researched:"):
+                sq = line.split(":", 1)[-1].strip()
+                break
+        round_num = "2"
+        for line in user.splitlines():
+            if line.startswith("Write the search query for round"):
+                round_num = line.rstrip(".").split()[-1]
+                break
+        base = " ".join(sq.split()[:8]) or "topic"
+        return {
+            "gap": "Mock: earlier rounds covered the general case but not empirical limitations.",
+            "query": f"{base} empirical limitations benchmark round{round_num}",
+            "rationale": "Mock: targets the limitation/counter-evidence angle the prior query missed.",
+        }
+
+    def _mock_report_critique(self, user: str) -> dict:
+        """
+        Deterministic report critique. First pass finds defects (so the revise
+        path is exercised in mock runs); later passes accept (so the loop
+        terminates and the convergence brake isn't the only thing stopping it).
+        """
+        pass_one = "version 1" in user
+        if not pass_one:
+            return {
+                "answers_the_question": True,
+                "verdict": "accept",
+                "defects": [],
+                "research_gaps": [],
+                "revision_instructions": "",
+            }
+
+        # Name a real sub-question id if one is visible, so the research-gap
+        # path is exercised with an id that actually validates.
+        import re as _re
+        ids = _re.findall(r"\[(sq_\d+)\]", user)
+        gaps = []
+        verdict = "revise_report"
+        if ids:
+            verdict = "needs_more_research"
+            gaps = [{"sub_question_id": ids[0],
+                     "what_to_find": "Mock: head-to-head empirical comparisons under matched conditions."}]
+        return {
+            "answers_the_question": False,
+            "verdict": verdict,
+            "defects": [
+                {"defect_type": "buried_answer",
+                 "detail": "Mock: the executive summary describes the topic without stating a direct answer.",
+                 "sub_question_id": None, "severity": "high"},
+                {"defect_type": "overstatement",
+                 "detail": "Mock: a low-confidence claim is stated as settled fact.",
+                 "sub_question_id": ids[0] if ids else None, "severity": "medium"},
+            ],
+            "research_gaps": gaps,
+            "revision_instructions": "Mock: lead with a direct answer; hedge the low-confidence claims.",
+        }
 
     def _generate_report(self, user: str) -> str:
         return """# Research Report

@@ -26,10 +26,12 @@ from src.agents.extractor import extract_claims
 from src.agents.planner import plan
 from src.agents.researcher import research_sub_question
 from src.agents.synthesizer import synthesize
+from src.obs.progress import narrate_phase, get_reporter
 from src.obs.trace import Timer, log_step, save_trace, save_full_state
 from src.orchestrator.allocator import allocate_budget, should_continue
 from src.orchestrator.config import Config
 from src.orchestrator.evolution import active_claims_for, evolve_claims
+from src.orchestrator.report_loop import run_report_correction
 from src.orchestrator.state import ResearchState
 from src.scoring.confidence import score_confidence
 from src.scoring.difficulty import estimate_difficulty, update_difficulty
@@ -107,16 +109,23 @@ def run_research(
         )
 
     state = ResearchState(query=query)
+    reporter = get_reporter()
 
     # Phase 1: Plan
+    narrate_phase("Understanding the question", query[:100])
     log_step(state, "pipeline", "start", f"Query: {query[:100]}", "Starting pipeline")
     plan(state, sub_llm, config)
     if not state.plan or not state.plan.sub_questions:
         state.report = "# Research Report\n\nFailed to decompose query into sub-questions."
         return state
+    for sq in state.plan.sub_questions:
+        reporter.sub(f"  {sq.sq_id}: {sq.question}")
 
     # Phase 2: Per-sub-question research loop
+    narrate_phase("Researching each sub-question")
     for sq in state.plan.sub_questions:
+        reporter.push(f"[{sq.sq_id}] {sq.question}")
+
         # Track A: estimate difficulty and allocate budget
         estimate_difficulty(state, sq, config)
         allocate_budget(state, sq, config)
@@ -124,7 +133,7 @@ def run_research(
         # Research loop: retrieve → extract → verify → confidence → maybe loop
         while sq.rounds_used < sq.compute_budget:
             round_num = sq.rounds_used + 1
-            new_evidence = research_sub_question(state, sq, round_num, config)
+            new_evidence = research_sub_question(state, sq, round_num, config, llm=sub_llm)
 
             if not new_evidence:
                 # No new evidence found — stop early
@@ -169,15 +178,27 @@ def run_research(
                 # Feedback loop — should we continue?
                 if config.adaptive.enabled:
                     if not should_continue(state, sq, new_claims, config):
+                        n_active = len(active_claims_for(state, sq.sq_id))
+                        avg = (
+                            sum(c.confidence or 0 for c in active_claims_for(state, sq.sq_id))
+                            / max(1, n_active)
+                        )
+                        reporter.decision(
+                            "Stopping research on this sub-question",
+                            f"{n_active} claims at {avg:.2f} average confidence — "
+                            f"enough to answer it",
+                        )
                         break  # confidence is high enough, stop spending compute
                 else:
                     # Uniform mode: always use full budget
                     if sq.rounds_used >= sq.compute_budget:
                         break
+        reporter.pop()
 
     # Phase 3: Cross-source contradiction detection
     # Retracted claims are excluded — a claim the system already withdrew should
     # not go on to generate contradictions or drag down its counterpart's score.
+    narrate_phase("Comparing evidence across sources")
     surviving_claims = [c for c in state.claims if c.is_active]
     detect_contradictions(state, surviving_claims, sub_llm, config)
 
@@ -185,7 +206,28 @@ def run_research(
     score_confidence(state, surviving_claims, config)
 
     # Phase 4: Synthesize report
+    narrate_phase("Writing the report")
     synthesize(state, synth_llm, config)
+
+    narrate_phase("Reviewing my own report")
+    # Phase 5: Report-level self-correction. Everything above improves
+    # individual claims; this is the only stage that asks whether the assembled
+    # report answers the question that was actually asked, and reopens
+    # retrieval if the evidence base itself turns out to be inadequate.
+    run_report_correction(
+        state,
+        synth_llm=synth_llm,
+        # Independent critic: reuses the challenger's client, which is already
+        # a different model from the synthesizer (DECISIONS.md D021).
+        critic_llm=challenger_llm,
+        sub_llm=sub_llm,
+        challenger_llm=challenger_llm,
+        reviser_llm=reviser_llm,
+        config=config,
+    )
+
+    # Phase 3 outputs can change if Phase 5 reopened research.
+    surviving_claims = [c for c in state.claims if c.is_active]
 
     revised = sum(1 for c in state.claims if c.revisions)
     retracted = sum(1 for c in state.claims if c.status == "retracted")
@@ -201,6 +243,8 @@ def run_research(
             "claims_revised": revised,
             "claims_retracted": retracted,
             "challenges_issued": len(state.challenges),
+            "report_version": state.report_version,
+            "report_critiques": len(state.report_critiques),
         },
     )
 

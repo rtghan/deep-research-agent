@@ -31,6 +31,13 @@ class RetrievalConfig:
     max_rounds: int = 3
     chunk_size: int = 1500
     chunk_overlap: int = 200
+    # Round 2+ retrieval reformulates the search query based on what earlier
+    # rounds already found and what is still missing, instead of re-issuing the
+    # sub-question verbatim every round. Without this, extra retrieval rounds
+    # only page deeper into the same result list — they add volume, not new
+    # angles, which is a large part of why accumulating rounds stops moving
+    # confidence (TESTING.md section 11 / DECISIONS.md D023).
+    reformulate_queries: bool = True
 
 
 @dataclass
@@ -94,6 +101,35 @@ class EvolutionConfig:
 
 
 @dataclass
+class ReportCorrectionConfig:
+    """
+    Report-level self-correction: critique the synthesized report and, if it
+    doesn't hold up, revise it or go find more evidence.
+
+    Claim evolution operates per-claim; nothing before this checked whether the
+    ASSEMBLED report actually answers the user's question. See
+    src/orchestrator/report_loop.py.
+    """
+    enabled: bool = True
+    # The critic runs on a different model from the synthesizer, for the same
+    # reason the challenger does (DECISIONS.md D021): a model reviewing its own
+    # output ratifies it. Empty = reuse the evolution challenger's client, which
+    # is already independent — no third API client needed.
+    critic_model: str = ""
+    max_passes: int = 2               # hard cap on correction passes
+    # Whether the critic may reopen retrieval (expensive) or only re-synthesize
+    # (cheap). Re-research is capped to one reopen per sub-question regardless.
+    allow_research_reopen: bool = True
+    # A sub-question whose active claims average below this is flagged as thin
+    # by the mechanical checks before the critic is even called.
+    thin_confidence_threshold: float = 0.45
+    # Stop early if a pass fails to reduce the high-severity defect count — a
+    # critic that keeps finding new complaints is not converging, and "found
+    # more fault" is not the same as "is right" (TESTING.md section 11).
+    stop_when_not_improving: bool = True
+
+
+@dataclass
 class SynthesisConfig:
     include_gaps: bool = True
     output_format: str = "markdown"
@@ -111,6 +147,7 @@ class Config:
     adaptive: AdaptiveConfig
     verification: VerificationConfig
     evolution: EvolutionConfig
+    report_correction: ReportCorrectionConfig
     synthesis: SynthesisConfig
     eval: EvalConfig
 
@@ -122,6 +159,7 @@ class Config:
             adaptive=AdaptiveConfig(**data.get("adaptive", {})),
             verification=VerificationConfig(**data.get("verification", {})),
             evolution=EvolutionConfig(**data.get("evolution", {})),
+            report_correction=ReportCorrectionConfig(**data.get("report_correction", {})),
             synthesis=SynthesisConfig(**data.get("synthesis", {})),
             eval=EvalConfig(**data.get("eval", {})),
         )
@@ -139,6 +177,7 @@ class Config:
                 adaptive=AdaptiveConfig(),
                 verification=VerificationConfig(),
                 evolution=EvolutionConfig(),
+                report_correction=ReportCorrectionConfig(),
                 synthesis=SynthesisConfig(),
                 eval=EvalConfig(),
             )

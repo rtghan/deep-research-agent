@@ -16,9 +16,15 @@ more LLM calls for extraction. The cost-quality curve measures this.
 
 from __future__ import annotations
 
+from src.agents.query_reformulator import reformulate_query
 from src.obs.trace import Timer, log_step
 from src.orchestrator.config import Config
-from src.orchestrator.state import EvidenceChunk, ResearchState, SubQuestion
+from src.orchestrator.state import (
+    EvidenceChunk,
+    ResearchState,
+    RetrievalAttempt,
+    SubQuestion,
+)
 from src.retrieval.chunker import chunk_text
 from src.tools.arxiv import search_arxiv, fetch_arxiv_content
 from src.tools.search import web_search
@@ -29,14 +35,21 @@ def research_sub_question(
     sq: SubQuestion,
     round_num: int,
     config: Config,
+    llm=None,
 ) -> list[EvidenceChunk]:
     """Run one retrieval round for a sub-question. Returns new evidence chunks."""
     new_evidence: list[EvidenceChunk] = []
     search_results_per_query = config.retrieval.search_results_per_query
 
+    # Round 2+ searches for what earlier rounds MISSED rather than re-issuing
+    # the sub-question verbatim (which only pages deeper into the same results).
+    query, reformulation_rationale, gap = reformulate_query(
+        state, sq, round_num, llm, config
+    )
+
     # Search arXiv
     with Timer() as timer:
-        papers = search_arxiv(sq.question, max_results=search_results_per_query)
+        papers = search_arxiv(query, max_results=search_results_per_query)
 
     chunk_id_base = f"{sq.sq_id}_r{round_num}"
     for i, paper in enumerate(papers):
@@ -57,7 +70,7 @@ def research_sub_question(
 
     # Search web (if Tavily key available)
     with Timer() as timer:
-        web_results = web_search(sq.question, max_results=search_results_per_query)
+        web_results = web_search(query, max_results=search_results_per_query)
 
     for i, result in enumerate(web_results):
         if result.content:
@@ -78,15 +91,36 @@ def research_sub_question(
     state.evidence.extend(new_evidence)
     sq.rounds_used += 1
 
+    # Record what this round searched for and what came back, so the NEXT
+    # round's reformulation can condition on it (and so the whole search
+    # trajectory is visible in state.json rather than lost inside the loop).
+    source_titles = list(dict.fromkeys(c.source_title for c in new_evidence))
+    sq.retrieval_attempts.append(RetrievalAttempt(
+        round_num=round_num,
+        query=query,
+        rationale=reformulation_rationale,
+        n_chunks=len(new_evidence),
+        source_titles=source_titles[:10],
+        gap_noted=gap,
+    ))
+
     log_step(
         state,
         component="researcher",
         step=f"round_{round_num}",
-        input_summary=f"SQ: {sq.question[:80]}",
+        input_summary=f"SQ: {sq.question[:80]}" + (
+            f" | reformulated query: {query[:60]}" if query != sq.question else ""
+        ),
         output_summary=f"{len(new_evidence)} chunks ({len(papers)} arXiv, {len(web_results)} web)",
         latency_ms=0,
         cost_tokens=0,
-        metadata={"round": round_num, "new_chunks": len(new_evidence)},
+        metadata={
+            "round": round_num,
+            "new_chunks": len(new_evidence),
+            "query": query,
+            "reformulated": query != sq.question,
+            "gap": gap,
+        },
     )
 
     return new_evidence

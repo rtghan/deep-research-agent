@@ -59,7 +59,17 @@ def main():
     parser.add_argument("--output", default="outputs", help="Output directory")
     parser.add_argument("--mock", action="store_true", help="Use mock LLM (no API key needed)")
     parser.add_argument("--openrouter", action="store_true", help="Use OpenRouter config")
+    parser.add_argument("--narrate", "-n", action="store_true",
+                        help="Narrate the research process live (what it's investigating and why)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Narrate with per-claim detail (implies --narrate)")
     args = parser.parse_args()
+
+    # Live narration writes to stderr, so `run.py -n "query" > report.md` still
+    # produces a clean report on stdout.
+    if args.narrate or args.verbose:
+        from src.obs.progress import enable
+        enable(verbose=args.verbose)
 
     if args.ablation:
         from ablations.run_ablation import run_ablation

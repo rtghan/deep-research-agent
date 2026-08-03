@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.egg-info/
+outputs/
+ablations/results/
+*.png
+!presentation/*.png
+.env
+
+# Full state dumps are regenerable and are ~95% duplicated raw evidence text
+# (30MB+ per eval sweep). The findings a reviewer actually needs -- reports,
+# traces, and metrics summaries -- are committed; state.json is not.
+eval/results/**/state.json
