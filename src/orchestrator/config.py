@@ -132,6 +132,33 @@ class EvolutionConfig:
 
 
 @dataclass
+class ExecutionConfig:
+    """
+    How work is executed. Serial is the default and remains the reference
+    behaviour; parallel is opt-in.
+
+    Sub-questions share no state by design, which is what makes fanning them
+    out safe. The reason to bother is wall-clock during evaluation: the 7-case
+    sweep took ~2.3 hours and an earlier one ~12, almost entirely spent waiting
+    on sequential HTTP requests rather than computing anything.
+
+    Two constraints worth knowing:
+      - Parallel execution multiplies request rate by `max_workers`, so it
+        depends on the retry/backoff in LLMClient. Rate limits already killed
+        two serial runs.
+      - The "scheduler" allocation strategy re-ranks after every round to
+        decide where the next one goes, so it is inherently sequential and
+        ignores this setting (the pipeline falls back to serial for it).
+    """
+    parallel_sub_questions: bool = False
+    max_workers: int = 4
+    # Test cases in the eval harness are fully independent runs — no shared
+    # state at all — so this is the safest parallelism in the project.
+    parallel_test_cases: bool = False
+    max_case_workers: int = 3
+
+
+@dataclass
 class ReportCorrectionConfig:
     """
     Report-level self-correction: critique the synthesized report and, if it
@@ -178,6 +205,7 @@ class Config:
     adaptive: AdaptiveConfig
     verification: VerificationConfig
     evolution: EvolutionConfig
+    execution: ExecutionConfig
     report_correction: ReportCorrectionConfig
     synthesis: SynthesisConfig
     eval: EvalConfig
@@ -190,6 +218,7 @@ class Config:
             adaptive=AdaptiveConfig(**data.get("adaptive", {})),
             verification=VerificationConfig(**data.get("verification", {})),
             evolution=EvolutionConfig(**data.get("evolution", {})),
+            execution=ExecutionConfig(**data.get("execution", {})),
             report_correction=ReportCorrectionConfig(**data.get("report_correction", {})),
             synthesis=SynthesisConfig(**data.get("synthesis", {})),
             eval=EvalConfig(**data.get("eval", {})),
@@ -208,6 +237,7 @@ class Config:
                 adaptive=AdaptiveConfig(),
                 verification=VerificationConfig(),
                 evolution=EvolutionConfig(),
+                execution=ExecutionConfig(),
                 report_correction=ReportCorrectionConfig(),
                 synthesis=SynthesisConfig(),
                 eval=EvalConfig(),

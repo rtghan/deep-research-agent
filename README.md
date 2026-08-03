@@ -20,6 +20,8 @@ PYTHONPATH=. python tests/test_evolution.py   # 82 offline checks, ~1s, no netwo
 python run.py --demo --mock              # full pipeline, no API key   (~2 min)
 python run.py --demo --narrate           # watch it reason (see below) (~5 min)
 python run.py "your research question"
+python run.py --demo --parallel          # same, sub-questions concurrently
+python run.py --eval --parallel          # 7-case harness, cases in parallel
 python run.py --eval                     # 7-case evaluation harness   (~2 h, real API)
 python run.py --ablation                 # 5-mode ablation + figures   (hours)
 ```
@@ -89,6 +91,8 @@ Query
 | Narration | `src/obs/progress.py` | Live process visibility |
 
 Environment: `OPENAI_API_KEY` or `OPENROUTER_API_KEY` (required); `TAVILY_API_KEY` (optional — falls back to DuckDuckGo/Wikipedia).
+
+**Serial vs parallel.** Serial is the default. `--parallel` fans out sub-questions (and test cases under `--eval`); `--serial` forces the reference behaviour back regardless of config; `--workers N` sets the pool size. Sub-questions share no state, so results are identical either way — verified at 9 claims / 9 unique IDs / 20740 tokens in both modes, 1.68× faster. The `scheduler` allocation strategy re-ranks after every round and so always runs serially.
 
 ## Where to look
 

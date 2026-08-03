@@ -11,12 +11,16 @@ of sync and a newly added agent becomes narratable for free.
 """
 
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 from src.obs.progress import get_reporter
 from src.orchestrator.state import ResearchState, TraceEntry
+
+
+_accum_lock = threading.Lock()
 
 
 def log_step(
@@ -39,9 +43,13 @@ def log_step(
         cost_tokens=cost_tokens,
         metadata=metadata or {},
     )
-    state.trace.append(entry)
-    state.total_tokens += cost_tokens
-    state.total_latency_ms += latency_ms
+    # list.append is atomic under the GIL, but `+=` on an int attribute is a
+    # read-modify-write and loses updates when sub-questions run in parallel.
+    # The lock is uncontended in serial mode, so this costs nothing there.
+    with _accum_lock:
+        state.trace.append(entry)
+        state.total_tokens += cost_tokens
+        state.total_latency_ms += latency_ms
 
     # Live narration is a view over the trace — no-op unless enabled.
     get_reporter().on_log_step(

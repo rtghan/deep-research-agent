@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -90,12 +91,39 @@ def _extract_json_from_text(text: str) -> dict:
     return {"raw_text": text}
 
 
+# Errors worth retrying: transient server-side or throttling conditions. A 400
+# or 404 will fail identically no matter how long you wait, so retrying those
+# just burns the budget slower.
+_RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+
+
+def _is_retryable(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        resp = getattr(exc, "response", None)
+        status = getattr(resp, "status_code", None)
+    if status in _RETRYABLE_STATUS:
+        return True
+    # Connection-level failures carry no status but are transient by nature.
+    name = type(exc).__name__
+    return name in {"APIConnectionError", "APITimeoutError", "InternalServerError",
+                    "RateLimitError", "ConnectionError", "Timeout"}
+
+
 class LLMClient:
     """
     Thin wrapper around the OpenAI API.
 
     Uses environment variable OPENAI_API_KEY by default.
     Supports OpenRouter via base_url override.
+
+    RETRIES. Rate limits (429) crashed two multi-hour evaluation runs outright
+    before this existed, and running sub-questions in parallel multiplies the
+    request rate by the worker count -- so backoff is a precondition for
+    concurrency, not a nicety. Retries use exponential backoff with jitter;
+    the jitter matters because N parallel workers that all fail at once would
+    otherwise retry in lockstep and reproduce the same burst that throttled
+    them.
     """
 
     def __init__(
@@ -105,17 +133,41 @@ class LLMClient:
         base_url: Optional[str] = None,
         temperature: float = 0.3,
         max_tokens: int = 2000,
+        max_retries: int = 4,
+        backoff_base: float = 1.5,
     ):
         key = api_key or os.environ.get("OPENAI_API_KEY", "")
         self.client = OpenAI(api_key=key, base_url=base_url)
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.max_retries = max_retries
+        self.backoff_base = backoff_base
+
+    def _with_retry(self, fn):
+        """
+        Call `fn`, retrying transient failures with jittered exponential backoff.
+
+        Returns the last exception rather than raising when retries are
+        exhausted on a retryable error, so one throttled sub-question degrades
+        to an empty result instead of killing a whole run.
+        """
+        last = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return fn()
+            except Exception as exc:
+                last = exc
+                if attempt >= self.max_retries or not _is_retryable(exc):
+                    raise
+                delay = (self.backoff_base ** attempt) + random.uniform(0, 0.75)
+                time.sleep(delay)
+        raise last
 
     def complete(self, system: str, user: str) -> LLMResponse:
         """Standard chat completion with token tracking."""
         start = time.time()
-        resp = self.client.chat.completions.create(
+        resp = self._with_retry(lambda: self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": system},
@@ -123,7 +175,7 @@ class LLMClient:
             ],
             temperature=self.temperature,
             max_tokens=self.max_tokens,
-        )
+        ))
         latency = (time.time() - start) * 1000
         text = _extract_message_text(resp, default="")
         usage = resp.usage
@@ -145,7 +197,7 @@ class LLMClient:
         """
         start = time.time()
         try:
-            resp = self.client.chat.completions.create(
+            resp = self._with_retry(lambda: self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system},
@@ -154,11 +206,13 @@ class LLMClient:
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
                 response_format={"type": "json_object"},
-            )
+            ))
         except Exception:
-            # Model does not support response_format — retry plain text
-            # and extract JSON from the output.
-            resp = self.client.chat.completions.create(
+            # Model does not support response_format — fall back to plain text
+            # and extract JSON from the output. Note this catch is deliberately
+            # broad: it also absorbs a retry-exhausted transient failure, which
+            # then gets one more (retried) attempt in the simpler shape.
+            resp = self._with_retry(lambda: self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system + "\n\nReturn ONLY a valid JSON object, no prose."},
@@ -166,7 +220,7 @@ class LLMClient:
                 ],
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
-            )
+            ))
         latency = (time.time() - start) * 1000
         text = _extract_message_text(resp, default="{}")
         usage = resp.usage

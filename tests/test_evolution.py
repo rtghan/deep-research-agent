@@ -473,6 +473,81 @@ check("ranking discriminates even when both values are tiny",
 check("scheduler strategy is opt-in; threshold remains the default",
       Config.load().adaptive.strategy == "threshold")
 
+# --- 13. Concurrency safety (parallel sub-question execution) ---
+# Serial remains the default; these pin the invariants parallel mode depends on.
+import threading as _threading
+from concurrent.futures import ThreadPoolExecutor as _TPE
+
+check("serial execution is the default", Config.load().execution.parallel_sub_questions is False)
+
+# Claim IDs must be unique across sub-questions. The old scheme read
+# len(state.claims) and counted up, which two concurrent extractors both
+# observe identically -> duplicate IDs -> silently cross-wired foreign keys.
+conc_state = ResearchState(query="c")
+conc_sqs = [SubQuestion(sq_id=f"sq_{i}", question=f"q{i}") for i in range(6)]
+conc_state.plan = ResearchPlan(query="c", sub_questions=conc_sqs)
+for i in range(6):
+    for k in range(3):
+        conc_state.evidence.append(EvidenceChunk(
+            chunk_id=f"sq_{i}_r1_a{k}_0", source_url="u", source_title=f"P{k}",
+            source_type="arxiv", text=f"evidence {i}-{k}", sub_question_id=f"sq_{i}"))
+
+def _extract(sq):
+    from src.agents.extractor import extract_claims
+    pool = [e for e in conc_state.evidence if e.sub_question_id == sq.sq_id]
+    extract_claims(conc_state, sq, pool, MockLLMClient(model="mock"), cfg)
+
+with _TPE(max_workers=6) as _pool:
+    list(_pool.map(_extract, conc_sqs))
+
+_ids = [c.claim_id for c in conc_state.claims]
+check("claim IDs are unique under concurrent extraction",
+      len(_ids) == len(set(_ids)), f"{len(_ids)} claims, {len(set(_ids))} unique")
+check("concurrent extraction lost no claims", len(conc_state.claims) == 18,
+      f"{len(conc_state.claims)} of 18")
+
+# Token accounting is read-modify-write; without a lock it silently undercounts.
+tok_state = ResearchState(query="t")
+from src.obs.trace import log_step as _log
+def _spam():
+    for _ in range(200):
+        _log(tok_state, "test", "step", "in", "out", latency_ms=1.0, cost_tokens=1)
+with _TPE(max_workers=8) as _pool:
+    list(_pool.map(lambda _: _spam(), range(8)))
+check("token accounting loses no updates under concurrency",
+      tok_state.total_tokens == 1600, f"{tok_state.total_tokens} of 1600")
+check("trace entries are all recorded", len(tok_state.trace) == 1600,
+      f"{len(tok_state.trace)} of 1600")
+
+# Narration must not interleave: each thread buffers and flushes as a block.
+import io as _io
+from src.obs.progress import ProgressReporter as _PR
+_buf = _io.StringIO()
+_rep = _PR(enabled=True, stream=_buf)
+def _narrate(n):
+    _rep.begin_buffered()
+    for k in range(5):
+        _rep.sub(f"worker{n}-line{k}")
+    _rep.flush_buffered()
+with _TPE(max_workers=4) as _pool:
+    list(_pool.map(_narrate, range(4)))
+_lines = [l for l in _buf.getvalue().splitlines() if l.strip()]
+_blocks_ok = all(
+    len({l.split("worker")[1][0] for l in _lines[i:i+5]}) == 1
+    for i in range(0, len(_lines), 5)
+)
+check("narration from each worker stays contiguous", _blocks_ok and len(_lines) == 20,
+      f"{len(_lines)} lines")
+
+# Retry layer: transient errors retried, permanent ones raised immediately.
+from src.tools.base import _is_retryable
+class _E(Exception):
+    def __init__(self, code): self.status_code = code
+check("429 is retryable", _is_retryable(_E(429)))
+check("503 is retryable", _is_retryable(_E(503)))
+check("400 is NOT retryable", not _is_retryable(_E(400)))
+check("404 is NOT retryable", not _is_retryable(_E(404)))
+
 print("\n" + ("ALL CHECKS PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 sys.exit(1 if fails else 0)

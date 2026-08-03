@@ -88,6 +88,19 @@ report_correction:
   # finding fault is not evidence it is right (TESTING.md section 11).
   stop_when_not_improving: true
 
+execution:
+  # Sub-questions share no state by design, so they can be fanned out. Serial
+  # remains the default and the reference behaviour; parallel is opt-in via
+  # this flag or `run.py --parallel`.
+  # Note: the "scheduler" allocation strategy re-ranks after every round and is
+  # therefore inherently sequential — it ignores this and runs serially.
+  parallel_sub_questions: false
+  max_workers: 4
+  # Test cases in the eval harness are fully independent runs, so this is the
+  # safest parallelism in the project and the one that saves the most time.
+  parallel_test_cases: false
+  max_case_workers: 3
+
 synthesis:
   include_gaps: true
   output_format: "markdown"

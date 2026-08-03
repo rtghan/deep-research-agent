@@ -42,11 +42,24 @@ _load_env_file()
 def _load_config(args):
     from src.orchestrator.config import Config
     if args.openrouter:
-        return Config.load("configs/openrouter.yaml")
+        cfg = Config.load("configs/openrouter.yaml")
     elif args.config:
-        return Config.load(args.config)
+        cfg = Config.load(args.config)
     else:
-        return Config.load()
+        cfg = Config.load()
+
+    # --serial wins over --parallel, so it is always a safe way to get the
+    # reference behaviour back regardless of what the config file says.
+    if getattr(args, "serial", False):
+        cfg.execution.parallel_sub_questions = False
+        cfg.execution.parallel_test_cases = False
+    elif getattr(args, "parallel", False):
+        cfg.execution.parallel_sub_questions = True
+        cfg.execution.parallel_test_cases = True
+    if getattr(args, "workers", None):
+        cfg.execution.max_workers = args.workers
+        cfg.execution.max_case_workers = args.workers
+    return cfg
 
 
 def main():
@@ -63,6 +76,12 @@ def main():
                         help="Narrate the research process live (what it's investigating and why)")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Narrate with per-claim detail (implies --narrate)")
+    parser.add_argument("--parallel", action="store_true",
+                        help="Run sub-questions concurrently (and test cases, under --eval)")
+    parser.add_argument("--serial", action="store_true",
+                        help="Force serial execution, overriding the config")
+    parser.add_argument("--workers", type=int, default=None,
+                        help="Worker count for --parallel (default 4)")
     args = parser.parse_args()
 
     # Live narration writes to stderr, so `run.py -n "query" > report.md` still

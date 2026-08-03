@@ -57,7 +57,14 @@ def extract_claims(
         )
 
     new_claims = []
-    existing_count = len(state.claims)
+    # Claim IDs are scoped to the sub-question and round rather than derived
+    # from len(state.claims). The old scheme read the global list length and
+    # counted up from it, which is a read-then-write race: two sub-questions
+    # extracting concurrently both observe the same length and mint the same
+    # IDs. Claim IDs are foreign keys -- contradictions, challenge records and
+    # the report's confidence index all join on them -- so a collision would
+    # silently cross-wire those references rather than fail loudly.
+    round_num = sq.rounds_used
     for i, c in enumerate(result.get("claims", [])):
         text = c.get("text", str(c)) if isinstance(c, dict) else str(c)
         evidence_indices = c.get("evidence_indices", []) if isinstance(c, dict) else []
@@ -67,7 +74,7 @@ def extract_claims(
                 evidence_ids.append(evidence_chunks[idx].chunk_id)
 
         claim = Claim(
-            claim_id=f"claim_{existing_count + i}",
+            claim_id=f"{sq.sq_id}_r{round_num}_c{i}",
             text=text,
             original_text=text,  # v1 text, preserved across later revisions
             evidence_ids=evidence_ids,

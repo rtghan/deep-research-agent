@@ -35,7 +35,11 @@ JSON), and is a no-op unless enabled — the default for library use is silence.
 from __future__ import annotations
 
 import sys
+import threading
 from dataclasses import dataclass, field
+
+
+_print_lock = threading.Lock()
 
 
 # ANSI styling, disabled automatically when not attached to a terminal.
@@ -64,11 +68,21 @@ class ProgressReporter:
     enabled: bool = False
     verbose: bool = False          # include per-claim detail (very chatty)
     stream: object = field(default_factory=lambda: sys.stderr)
-    _indent: int = 0
     _phase: str = ""
 
     def __post_init__(self):
         self.style = _Style(enabled=getattr(self.stream, "isatty", lambda: False)())
+        self._local = threading.local()
+
+    # Indentation is per-thread. Parallel workers each track their own nesting
+    # depth; a single shared counter would interleave into meaningless output.
+    @property
+    def _indent(self) -> int:
+        return getattr(self._local, "indent", 0)
+
+    @_indent.setter
+    def _indent(self, v: int) -> None:
+        self._local.indent = v
 
     # --- primitives -------------------------------------------------------
 
@@ -76,7 +90,32 @@ class ProgressReporter:
         if not self.enabled:
             return
         pad = "  " * (self._indent if indent is None else indent)
-        print(f"{pad}{text}", file=self.stream, flush=True)
+        line = f"{pad}{text}"
+        # When sub-questions run in parallel, interleaved narration is unreadable
+        # -- three workers emitting alternating lines produces a transcript no
+        # human can follow. So a worker buffers its own lines and flushes them
+        # as one contiguous block when its sub-question finishes. Serial mode
+        # has no buffer set and prints straight through.
+        buf = getattr(self._local, "buffer", None)
+        if buf is not None:
+            buf.append(line)
+            return
+        with _print_lock:
+            print(line, file=self.stream, flush=True)
+
+    def begin_buffered(self) -> None:
+        """Start capturing this thread's narration instead of printing it."""
+        self._local.buffer = []
+
+    def flush_buffered(self) -> None:
+        """Print everything this thread captured, as one uninterrupted block."""
+        buf = getattr(self._local, "buffer", None)
+        self._local.buffer = None
+        if not buf or not self.enabled:
+            return
+        with _print_lock:
+            for line in buf:
+                print(line, file=self.stream, flush=True)
 
     def phase(self, name: str, detail: str = "") -> None:
         """Top-level pipeline phase banner."""

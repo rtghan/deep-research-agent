@@ -20,6 +20,7 @@ When disabled, all sub-questions get the same compute budget (max_budget).
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from src.agents.extractor import extract_claims
@@ -183,38 +184,88 @@ def run_research(
     for sq in state.plan.sub_questions:
         estimate_difficulty(state, sq, config)
 
+    # The scheduler re-ranks after every round to choose where the next one
+    # goes, so it is inherently sequential and cannot be fanned out without
+    # giving up the adaptivity that justifies it.
+    parallel = (
+        config.execution.parallel_sub_questions
+        and not (config.adaptive.enabled and config.adaptive.strategy == "scheduler")
+        and len(state.plan.sub_questions) > 1
+    )
+
     if config.adaptive.enabled and config.adaptive.strategy == "scheduler":
         # Global pool, allocated by ranking. See scheduler.py for why this
         # exists: the threshold strategy provably could not grant a 3rd round.
         run_scheduled_research(state, config, run_round)
     else:
         # Original strategy: per-sub-question budget from an absolute threshold.
-        for sq in state.plan.sub_questions:
-            reporter.push(f"[{sq.sq_id}] {sq.question}")
-            allocate_budget(state, sq, config)
+        # The body below is identical whether it runs serially or in a worker
+        # thread — sub-questions share no state, which is what makes fanning
+        # them out safe (see ExecutionConfig).
+        def research_sub_question_fully(sq) -> None:
+            buffered = parallel  # only buffer narration when output would interleave
+            if buffered:
+                reporter.begin_buffered()
+            try:
+                reporter.push(f"[{sq.sq_id}] {sq.question}")
+                allocate_budget(state, sq, config)
 
-            while sq.rounds_used < sq.compute_budget:
-                round_num = sq.rounds_used + 1
-                outcome = run_round(sq, round_num)
-                if outcome.found_nothing:
-                    break
-
-                if config.adaptive.enabled:
-                    if not should_continue(state, sq, None, config):
-                        n_active = len(active_claims_for(state, sq.sq_id))
-                        avg = (
-                            sum(c.confidence or 0 for c in active_claims_for(state, sq.sq_id))
-                            / max(1, n_active)
-                        )
-                        reporter.decision(
-                            "Stopping research on this sub-question",
-                            f"{n_active} claims at {avg:.2f} average confidence — "
-                            f"enough to answer it",
-                        )
+                while sq.rounds_used < sq.compute_budget:
+                    round_num = sq.rounds_used + 1
+                    outcome = run_round(sq, round_num)
+                    if outcome.found_nothing:
                         break
-                elif sq.rounds_used >= sq.compute_budget:
-                    break
-            reporter.pop()
+
+                    if config.adaptive.enabled:
+                        if not should_continue(state, sq, None, config):
+                            n_active = len(active_claims_for(state, sq.sq_id))
+                            avg = (
+                                sum(c.confidence or 0 for c in active_claims_for(state, sq.sq_id))
+                                / max(1, n_active)
+                            )
+                            reporter.decision(
+                                "Stopping research on this sub-question",
+                                f"{n_active} claims at {avg:.2f} average confidence — "
+                                f"enough to answer it",
+                            )
+                            break
+                    elif sq.rounds_used >= sq.compute_budget:
+                        break
+                reporter.pop()
+            finally:
+                if buffered:
+                    reporter.flush_buffered()
+
+        if parallel:
+            workers = min(config.execution.max_workers, len(state.plan.sub_questions))
+            log_step(
+                state, "pipeline", "parallel_start",
+                f"{len(state.plan.sub_questions)} sub-questions",
+                f"running with {workers} workers",
+                metadata={"workers": workers},
+            )
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(research_sub_question_fully, sq): sq
+                    for sq in state.plan.sub_questions
+                }
+                for fut in as_completed(futures):
+                    sq = futures[fut]
+                    # One sub-question failing should not lose the other four.
+                    # Record it and carry on; the report will show the gap.
+                    try:
+                        fut.result()
+                    except Exception as exc:
+                        sq.sufficient_evidence = False
+                        log_step(
+                            state, "pipeline", "sub_question_failed",
+                            f"{sq.sq_id}: {sq.question[:60]}",
+                            f"{type(exc).__name__}: {exc}",
+                            metadata={"sq_id": sq.sq_id, "error": type(exc).__name__},
+                        )
+        else:
+            for sq in state.plan.sub_questions:
+                research_sub_question_fully(sq)
 
     # Phase 3: Cross-source contradiction detection
     # Retracted claims are excluded — a claim the system already withdrew should

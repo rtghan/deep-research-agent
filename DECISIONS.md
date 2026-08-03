@@ -789,3 +789,40 @@ The README's framing is therefore incomplete rather than wrong, and needs the se
 **The genuinely surprising result: the strong challenger was worse at the one thing we measure it on.** Ungrounded-refutation rate — challenges proposing refuting evidence whose quote fails the substring check — was **4.4% for the weak challenger (deepseek-chat) and 13.6% for the strong one (gpt-4.1)**, a 3× *degradation* with capability. That is a property-compliance failure, and it lines up exactly with D035's boundary: capability improves *judgement* and does nothing for *property compliance* — here it actively hurt. It also means the quote-grounding check earns its keep more, not less, as models get stronger.
 
 **What it did not solve.** Three test cases, one strong model, saturated primary metric. The comparison that would actually settle this needs a question where round-1 evidence is demonstrably insufficient and support rate has room to move — which, per D036, the suite does not currently contain. Also unmeasured: whether arm B's *fewer* claims (107 vs 137) are better-chosen or merely fewer.
+
+---
+
+## D038 — Parallel execution, opt-in, with backoff as a precondition **[S8]**
+
+**The problem.** Sub-questions share no state by design (that independence is argued for in the design doc), and the system had never exploited it. Everything ran in one synchronous loop: no `async`, no threads, no pools anywhere in the source. The cost was wall-clock on evaluation — a 7-case sweep took ~2.3 hours and an earlier one ~12, almost all of it spent waiting on sequential HTTP requests rather than computing. Every experiment in this project was gated on that wait.
+
+**Order of work, which mattered.** Retry/backoff first, then parallelism. Rate limits (429) had already killed two serial runs outright, and N workers multiply the request rate by N. Adding concurrency first would have made the system *less* reliable, not faster.
+
+**What we built.**
+
+1. **Retry with jittered exponential backoff** in `LLMClient`, applied to both `complete()` and `complete_json()` including its plain-text fallback. Retryable statuses are the transient set (408/409/425/429/5xx) plus connection-level failures; a 400 or 404 raises immediately rather than burning the budget slowly. The jitter matters specifically because N workers throttled simultaneously would otherwise retry in lockstep and reproduce the burst that throttled them.
+
+2. **Sub-question-scoped claim IDs.** The real correctness blocker. The old scheme read `len(state.claims)` and counted up from it, which is a read-then-write race: two extractors running concurrently observe the same length and mint the same IDs. Claim IDs are foreign keys — contradictions, challenge records and the report's confidence index all join on them — so a collision would have silently cross-wired those references instead of failing loudly. IDs are now `{sq_id}_r{round}_c{i}`, unique by construction.
+
+3. **Locked accumulation** in `log_step`. `list.append` is atomic under the GIL but `+=` on an int attribute is a read-modify-write and loses updates. The lock is uncontended in serial mode.
+
+4. **Per-thread narration buffering.** Interleaved narration from four workers is unreadable, so each worker buffers its own lines and flushes them as one contiguous block when its sub-question finishes. Indentation depth is thread-local for the same reason.
+
+5. **Opt-in config with a serial override.** `execution.parallel_sub_questions` / `max_workers`, plus `--parallel`, `--serial` and `--workers` on the CLI. `--serial` beats `--parallel`, so the reference behaviour is always one flag away regardless of what the config says.
+
+6. **Parallel test cases** in the eval harness — separate `ResearchState`, separate output directory, nothing shared at all. This is the safest parallelism available and the one that saves the most time.
+
+**Deliberate exclusion.** The `scheduler` allocation strategy re-ranks after every round to decide where the next one goes, so it is inherently sequential; the pipeline detects it and falls back to serial rather than silently discarding the adaptivity that justifies the strategy. Fanning it out would mean batched allocation with re-ranking between batches, trading adaptivity for wall-clock — not attempted.
+
+**What it produced.** Same query, mock LLM (so retrieval is still real and dominates), 3 sub-questions, 4 workers:
+
+| | wall | claims | unique IDs | evidence | tokens | trace |
+|---|---|---|---|---|---|---|
+| serial | 9.3s | 9 | 9 | 233 | 20740 | 75 |
+| parallel | **5.5s** | 9 | 9 | 233 | 20740 | 76 |
+
+**1.68× faster with byte-identical results.** Token counts match exactly, which is the evidence the accumulation lock works. The single extra trace entry is the `parallel_start` marker and nothing else — verified by diffing the step sets. Failures are isolated per sub-question: one worker raising marks that sub-question `sufficient_evidence=False` and logs it rather than losing the other four.
+
+Twelve new offline checks cover the invariants: unique claim IDs under six concurrent extractors, no lost claims, exact token totals under eight threads spamming `log_step`, contiguous per-worker narration, and the retryable/non-retryable status split.
+
+**What it did not solve.** The speedup here is modest because mock mode still does real retrieval and only three sub-questions exist; with 5–7 sub-questions and real LLM latency the ceiling is nearer the worker count. Retries are not budgeted globally, so a heavily throttled run can still take arbitrarily long rather than failing fast. There is no adaptive concurrency — `max_workers` is fixed rather than backing off when the provider starts throttling. And the harness-level parallelism multiplies with pipeline-level parallelism, so `--parallel --eval` can issue `max_case_workers × max_workers` concurrent requests, which is not currently bounded by a single global semaphore.
