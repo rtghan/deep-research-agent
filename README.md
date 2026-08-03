@@ -96,7 +96,17 @@ Two design commitments worth calling out, both learned the hard way:
 
 ## Results
 
-**Track A — adaptive vs. uniform** (4 test cases, real gpt-4o-mini): adaptive **98% support at 31K tokens** vs. uniform **99% at 110K** — same quality, **3.5× cheaper**.
+**Track A — adaptive vs. uniform, and the baseline that matters.** Against the *maximum*-compute baseline (4 rounds on every sub-question): adaptive achieves **98% support at 31K tokens** vs. **99% at 110K** — same quality, **3.5× cheaper**.
+
+Against the *minimum*-compute baseline (1 round each), which D011 flagged as untested and D036 finally ran, the picture reverses:
+
+| arm | support | ECE | tokens |
+|---|---|---|---|
+| **uniform, 1 round each** | **100.0%** | **0.203** | **1.85M** |
+| threshold (adaptive) | 98.4% | 0.230 | 3.22M |
+| scheduler (ranking) | 98.3% | 0.221 | 2.58M |
+
+**On these test cases extra rounds bought nothing** — support rate is saturated at 98–100%, so the cheapest arm wins by default. Adaptivity is worth paying for only if the alternative is spending maximum everywhere. The narrower claim does hold: ranking beats thresholding (−20% tokens at equal support, better ECE). See D036 — this is the project's most important negative result, and the test suite, built to stress claim evolution rather than compute allocation, is part of why.
 
 **Track B — verifier ablation**: without the verifier, support rate drops to 0% (no assessment exists) and the difficulty signal loses its Phase-2 input. Load-bearing.
 

@@ -730,3 +730,35 @@ The distinction is whether the failure is the model *not doing what it was told*
 **What we changed.** Nothing automatically — swapping the judge would invalidate the comparability of every run already reported. What it licenses, and what the config now supports: run the judge on gemini-2.5-pro for any future evaluation. The cost is trivial for the value — roughly **$2 per full 7-case sweep** (~520 judged revisions × ~2.5K tokens), to take the headline metric from 50% to 90% self-consistency.
 
 **What it did not solve.** n=30, one prompt, one task shape. "Capability helps judgement" is supported here but should not be extrapolated to every LLM-judge setting without measurement. And a perfectly order-invariant judge is still not a *correct* judge — consistency is necessary, not sufficient. Human adjudication on a sample remains the only way to know whether gemini's 90%-consistent verdicts are also right.
+
+---
+
+## D036 — The minimum-compute baseline wins: adaptivity bought nothing on these test cases **[S4]**
+
+**The problem.** D012 reports Track A's headline: adaptive allocation achieves "98% quality at 3.5× lower cost than uniform." D011 defines that uniform baseline as **`max_budget` (4 rounds) for every sub-question** — deliberately the *upper bound* — and closes by naming exactly what was missing: *"We did not test a 'minimum compute' baseline (1 round for all), which would show whether adaptive also improves quality over a budget-constrained system."* D027 then added a second allocation strategy that had never been compared against anything on real models. This run does both.
+
+**What we did.** Three arms, four test cases, everything except allocation held identical (models, retrieval breadth, challenge budget, evidence caps; Phase 5 disabled so it could not reopen retrieval and contaminate a Phase-2 comparison).
+
+| arm | claims | support | ECE | tokens | rounds |
+|---|---|---|---|---|---|
+| **uniform** — 1 round each, no adaptivity | 198 | **100.0%** | **0.203** | **1.85M** | **20** |
+| threshold — shipped allocator | 386 | 98.4% | 0.230 | 3.22M | 33 |
+| scheduler — ranking, D027 | 288 | 98.3% | 0.221 | 2.58M | 27 |
+
+**The least adaptive arm won on every quality metric and cost the least.** Adaptive allocation spent **1.74× more** than single-round and delivered **−1.6 pp** support and worse calibration.
+
+**Both headline claims are true, and that is the honest reconciliation.** D012 compared adaptive against the *maximum* baseline; this compares it against the *minimum*. Adaptive sits between two baselines, so its value depends entirely on which one you would otherwise have run:
+- vs. 4-rounds-on-everything: adaptive saves 3.5× at equal quality. **Real.**
+- vs. 1-round-on-everything: adaptive costs 1.74× more for no measurable gain. **Also real.**
+
+The README's framing is therefore incomplete rather than wrong, and needs the second baseline stated beside the first.
+
+**The mechanism, and why this is the same finding as D023.** Support rate is **saturated** — every arm lands at 98–100%, so the metric cannot discriminate and the cheapest arm wins by default. Extra rounds produced roughly twice as many claims (198 → 386) with no quality improvement, and slightly *lower* support, consistent with more claims meaning more chances to be unsupported, plus more revisions running through a `reverse` operation already known to be net-negative on support (D030). This is the same root cause D023 identified from the other direction: difficulty saturates low *because claims verify confidently after one round*. If one round already suffices, the entire adaptive apparatus is optimising a problem these test cases do not have.
+
+**That is as much a test-design finding as a system finding.** The suite was built to stress claim evolution, not to stress compute allocation. A question that genuinely required multi-round accumulation — sparse, contested, or fast-moving evidence where round 1 is demonstrably insufficient — would be the only fair test of Track A, and we do not have one. `tc3_sparse` was intended to be it and still resolves at 95.9–100%.
+
+**The narrower result does hold: ranking beats thresholding.** Scheduler vs. threshold at matched settings: **−20% tokens** (2.58M vs 3.22M), equal support (98.3% vs 98.4%, within noise), and slightly better ECE (0.221 vs 0.230). D027's core argument — that an argmax has no threshold to mis-calibrate — is supported. It just cannot rescue the premise that adaptivity is needed here at all.
+
+**What we changed.** Nothing in the defaults. The result is about which baseline a claim is measured against, not about a bug.
+
+**What it did not solve.** Four test cases, one config, one model pair. Support rate is a saturated and therefore weak discriminator — a metric that separates arms at the top of its range (e.g. human-judged answer completeness, or coverage of the sub-question) would be needed to tell whether the extra claims from adaptive arms carry *information* even when they do not move support. And the Pareto frontier still has only three points on it.
