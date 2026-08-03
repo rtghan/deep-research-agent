@@ -1,7 +1,7 @@
 """
 Self-agreement bias ablation — PAIRED design.
 
-The open question since DECISIONS.md D006 (and re-flagged in D021/D022/D023):
+The long-standing open question:
 the entire justification for running the challenger on a DIFFERENT model from
 the extractor rests on the assumption that a model asked to critique its own
 output tends to ratify it. That has never been measured.

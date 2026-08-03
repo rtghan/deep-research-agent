@@ -8,7 +8,7 @@ The original allocator asks, per sub-question and in isolation:
     budget = int(min_budget + difficulty * (max_budget - min_budget))
     while rounds_used < budget: ...
 
-The 7-test-case evaluation (TESTING.md section 11, DECISIONS.md D023) showed
+The 7-test-case evaluation showed
 this can effectively never grant a third round. With min=1, max=4, a budget of 3
 requires difficulty >= 0.667. Difficulty updates as
 `0.6*(1 - avg_confidence) + 0.4*linguistic`, so clearing 0.667 at a typical
@@ -47,7 +47,7 @@ WHAT THIS DOES NOT FIX
 This changes WHERE effort goes, not WHETHER the inner loop converges. If claim
 evolution never settles on a fixed evidence pool, a scheduler just distributes
 non-convergence more evenly. That question is measured separately by the
-frozen-pool experiment (see TESTING.md).
+frozen-pool experiment.
 
 This is deliberately additive: `adaptive.strategy: "threshold" | "scheduler"`
 selects between them so both remain runnable and directly comparable.
@@ -118,7 +118,7 @@ def marginal_value(
         yield_term = min(1.0, 0.15 + moved / 8.0)
 
     # 3. OSCILLATION PENALTY — this term exists because the frozen-pool
-    #    experiment (TESTING.md section 14) broke the naive version of the
+    #    experiment broke the naive version of the
     #    yield term above. Claims that cycle between wordings change EVERY
     #    round, forever, even against evidence that never changes: 6/12 claims
     #    did exactly that, at a flat ~50% keep rate over 5 passes. A yield

@@ -2,7 +2,7 @@
 Judge reliability: position bias and self-consistency.
 
 WHY. "81.7% of revisions judged improvements" is a headline number in the
-README, DECISIONS.md, and the presentation. It is produced by a single LLM
+README, DESIGN.md, and the presentation. It is produced by a single LLM
 doing a pairwise A/B comparison. If that judge has a position preference —
 systematically picking whichever text is labelled A, or B — then the 81.7% is
 measuring label placement, not quality, and every conclusion resting on it is

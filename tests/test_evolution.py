@@ -9,7 +9,7 @@ report-level self-correction.
 
 These exist because the expensive failures in this project were all caught by
 real-model runs costing dollars and hours; anything that can be pinned down
-deterministically should be pinned down here first. See TESTING.md.
+deterministically should be pinned down here first.
 
 Run:  PYTHONPATH=. python tests/test_evolution.py
 Exits non-zero if any check fails, so it works as a CI gate.
@@ -409,7 +409,7 @@ check("synthesis prompt still ties hedging language to the 0.6 threshold",
 # The prompt instruction alone was NOT enough: a real gpt-4o-mini run emitted
 # zero markers despite the explicit format. The requirement is therefore
 # satisfied structurally, by rendering the index in code. Same lesson as
-# quote-grounding (D022): when a property must hold, code it, don't ask for it.
+# quote-grounding: when a property must hold, code it, don't ask for it.
 from src.agents.synthesizer import _render_confidence_index
 _idx_claims = [c for c in state.claims if c.is_active]
 _idx = _render_confidence_index(state, _idx_claims, {c.chunk_id: c for c in state.evidence})

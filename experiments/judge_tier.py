@@ -1,7 +1,7 @@
 """
 Does model capability fix the judge's position bias?
 
-D031 found the judge (deepseek-chat) agrees with itself only 56.7% of the time
+An earlier run found the judge (deepseek-chat) agrees with itself only 56.7% of the time
 when the same comparison is presented in reverse, is position-locked on 30% of
 pairs, and prefers whichever text sits in slot B 69% of the time. That is a
 concrete, measured defect in the metric behind the project's headline number.
@@ -32,7 +32,7 @@ from src.tools.base import LLMClient
 from src.scoring.judge import JUDGE_SYSTEM
 
 N_PAIRS = 30
-SEED = 20260802          # identical to D031 -> identical pairs
+SEED = 20260802          # identical to the earlier run -> identical pairs
 CANDIDATES = [
     ("deepseek/deepseek-chat", "baseline"),
     ("openai/gpt-4.1", "strong"),

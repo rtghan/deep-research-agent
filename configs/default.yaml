@@ -1,5 +1,5 @@
 # Deep Research Agent — Default Configuration
-# Every knob here maps to a design decision documented in DECISIONS.md
+# Every knob here maps to a design decision documented in DESIGN.md
 
 llm:
   # Sub-step model: cheap, fast, good enough for extraction/verification
@@ -31,7 +31,7 @@ adaptive:
   # How much novelty (new claims) justifies another round
   novelty_threshold: 0.15
 
-  # --- Effort allocation strategy (DECISIONS.md D027) ---
+  # --- Effort allocation strategy ---
   # "threshold"  = original per-sub-question budget from an absolute difficulty
   #                bar. MEASURED unable to grant a 3rd round: 0 of 35
   #                sub-questions ever crossed it, because difficulty saturates
@@ -57,7 +57,7 @@ verification:
 
 evolution:
   # Claims are challenged and revised as evidence accumulates, instead of
-  # being append-only. See DECISIONS.md D020/D021.
+  # being append-only.
   enabled: true
   # The challenger is ADVERSARIAL and deliberately a different model from
   # sub_step_model (which extracts the claims it attacks). Same model =
@@ -97,7 +97,7 @@ report_correction:
   allow_research_reopen: true
   thin_confidence_threshold: 0.45
   # Stop if a pass fails to reduce high-severity defects — a critic that keeps
-  # finding fault is not evidence it is right (TESTING.md section 11).
+  # finding fault is not evidence it is right.
   stop_when_not_improving: true
 
 execution:

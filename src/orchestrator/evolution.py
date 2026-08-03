@@ -33,8 +33,7 @@ wrong, flip it" is made by thresholding a source-weighted evidence balance:
 Counting DISTINCT SOURCES rather than chunks is load-bearing: one paper split
 into eight chunks must not outvote three papers that disagree with it.
 
-TWO FIXES FROM THE 2026-08 REAL-MODEL EVALUATION (see TESTING.md for the full
-writeup and examples):
+TWO FIXES FROM THE 2026-08 REAL-MODEL EVALUATION:
 
 1. balance is a RATIO, and a ratio is blind to sample size:
    compute_evidence_balance(0, 1) == compute_evidence_balance(0, 10) == -1.0.
@@ -183,7 +182,7 @@ def route_operation(challenge, config: Config) -> str:
 
     # STALEMATE: the challenger, having seen this claim's revision history, says
     # its objection would push the claim back toward a wording it already held.
-    # Rewriting again would just continue the cycle D028 measured, so the claim
+    # Rewriting again would just continue the measured cycle, so the claim
     # stands and gets flagged as contested instead. This is the only branch that
     # depends on the challenger having memory of its own past decisions.
     if challenge.contested_stalemate:

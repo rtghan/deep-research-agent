@@ -35,7 +35,7 @@ run forever:
    pass.
 3. `stop_when_not_improving` — if a pass does not reduce the high-severity
    defect count, stop. The 7-test-case evaluation established that a critic
-   finding *more* fault is not evidence it is right (TESTING.md section 11), so
+   finding *more* fault is not evidence it is right, so
    "keeps complaining" must terminate the loop rather than justify another pass.
 """
 

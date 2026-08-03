@@ -1,7 +1,7 @@
 """
-2x2 crossover — the experiment that settles D026's confound.
+2x2 crossover — the experiment that settles the self-agreement confound.
 
-THE CONFOUND. D026 found the "self" challenger (gpt-4o-mini, same model that
+THE CONFOUND. An earlier paired test found the "self" challenger (gpt-4o-mini, same model that
 wrote the claims) was strictly HARSHER than the independent one (deepseek-chat):
 93.3% vs 81.9% fault-finding, McNemar p=0.0005, zero claims where only the
 independent challenger objected. That refutes self-agreement bias as a
@@ -32,7 +32,7 @@ Model harshness cancels out because each model appears once on each side.
 
 Step 1 therefore has to CREATE the missing cell: claims authored by
 deepseek-chat over the same evidence gpt-4o-mini saw. Without that, no
-crossover is possible — which is why D026 could only report the confounded
+crossover is possible — which is why that test could only report the confounded
 version.
 """
 import sys, os, json, glob, random
@@ -175,7 +175,7 @@ elif bias < -0.10:
 else:
     verdict = "NO material self-agreement bias once critic harshness is controlled for."
 print(f"\n  => {verdict}")
-print(f"     (D026's confounded estimate came from the 'claims authored A' row alone.)")
+print(f"     (the confounded estimate came from the 'claims authored A' row alone.)")
 
 json.dump({str(k): v for k, v in cells.items()} | {"interaction_pp": bias * 100},
           open("eval/results/crossover_2x2.json", "w"), indent=2)

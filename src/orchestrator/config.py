@@ -36,7 +36,7 @@ class RetrievalConfig:
     # sub-question verbatim every round. Without this, extra retrieval rounds
     # only page deeper into the same result list — they add volume, not new
     # angles, which is a large part of why accumulating rounds stops moving
-    # confidence (TESTING.md section 11 / DECISIONS.md D023).
+    # confidence.
     reformulate_queries: bool = True
 
 
@@ -53,7 +53,7 @@ class AdaptiveConfig:
     #                difficulty threshold. Measured unable to grant a 3rd round
     #                in practice (0/35 sub-questions crossed it) because
     #                difficulty saturates at 0.13-0.31 while budget 3 needs
-    #                0.667. See DECISIONS.md D023/D027.
+    #                0.667.
     # "scheduler"  — global pool allocated by RANKING sub-questions on marginal
     #                value. No absolute threshold to calibrate, so saturation
     #                cannot block multi-round research.
@@ -108,7 +108,7 @@ class EvolutionConfig:
     reversal_balance_threshold: float = -0.3  # below this → flip the position
     reasoning_soundness_threshold: float = 0.6  # below this → refine the logic
 
-    # --- Fixes from the 2026-08 real-model evaluation (TESTING.md) ---
+    # --- Fixes from the 2026-08 real-model evaluation ---
     # balance is a RATIO — compute_evidence_balance(0, 1) is -1.0, identical to
     # (0 supporting, 10 refuting). A single dissenting source against a claim
     # with no other coverage should not get the same reversal authority as ten
@@ -119,8 +119,8 @@ class EvolutionConfig:
     # Second, independent quality signal. See ClaimRevision.judge_verdict.
     judge_revisions: bool = True
 
-    # --- Challenger memory (DECISIONS.md D029) ---
-    # The frozen-pool experiment (D028) found the loop never converges: 6/12
+    # --- Challenger memory ---
+    # The frozen-pool experiment found the loop never converges: 6/12
     # claims cycled A->B->A against evidence that never changed. The suspected
     # root cause is that the challenger is STATELESS across passes — it
     # re-argues from scratch every time and can reverse a reversal without ever
@@ -170,7 +170,7 @@ class ReportCorrectionConfig:
     """
     enabled: bool = True
     # The critic runs on a different model from the synthesizer, for the same
-    # reason the challenger does (DECISIONS.md D021): a model reviewing its own
+    # reason the challenger does: a model reviewing its own
     # output ratifies it. Empty = reuse the evolution challenger's client, which
     # is already independent — no third API client needed.
     critic_model: str = ""
@@ -183,7 +183,7 @@ class ReportCorrectionConfig:
     thin_confidence_threshold: float = 0.45
     # Stop early if a pass fails to reduce the high-severity defect count — a
     # critic that keeps finding new complaints is not converging, and "found
-    # more fault" is not the same as "is right" (TESTING.md section 11).
+    # more fault" is not the same as "is right".
     stop_when_not_improving: bool = True
 
 

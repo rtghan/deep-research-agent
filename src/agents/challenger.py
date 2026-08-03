@@ -22,8 +22,8 @@ Two things distinguish it from the verifier:
 
 2. It runs on a DIFFERENT model from the one that wrote the claim. A model asked
    to critique its own output tends to ratify it; that self-agreement bias is
-   the known weakness of "just ask the model to check itself" (DECISIONS.md
-   D006). Pointing the challenger at a different model — optionally a different
+   the known weakness of "just ask the model to check itself".
+   Pointing the challenger at a different model — optionally a different
    provider entirely — is the structural defense, and setting it back to the
    same model is a controlled way to MEASURE the bias (the `evolution_self`
    ablation).
@@ -34,7 +34,7 @@ deterministic function of evidence balance (src/orchestrator/evolution.py) — n
 the challenger's mood.
 
 QUOTE-GROUNDED REFUTATION (added after the 2026-08 real-model evaluation, see
-TESTING.md). A run against real arXiv/web evidence surfaced a concrete failure:
+A run against real arXiv/web evidence surfaced a concrete failure:
 the challenger flagged "Chain-of-thought prompting assists in diagnosing flawed
 conclusions" as refuted because "the majority of evidence focuses on reasoning
 and problem-solving without explicitly linking it to diagnosing flaws" — i.e.
@@ -176,7 +176,7 @@ def _format_revision_history(claim: Claim, config: Config) -> str:
     Show the challenger what it (or a previous pass) already did to this claim.
 
     This exists because of a measured failure, not a hunch. The frozen-pool
-    experiment (DECISIONS.md D028) re-challenged claims against evidence that
+    experiment re-challenged claims against evidence that
     never changed and found the loop never settles: 6 of 12 claims cycled
     between wordings they had already held, at a flat ~50% keep rate over five
     passes. The suspected cause is that the challenger is stateless across

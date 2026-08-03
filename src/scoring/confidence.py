@@ -101,7 +101,7 @@ def score_confidence(
 
             # Weights sum to 1.0, unlike the two-signal version whose maximum
             # was 0.8 — a structural cause of the compressed 0.5-0.65 band and
-            # the under-confidence reported in D013.
+            # the under-confidence originally reported.
             confidence = (
                 0.35 * support
                 + 0.25 * reasoning

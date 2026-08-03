@@ -3,10 +3,10 @@ Three-way effort-allocation comparison: threshold vs scheduler vs uniform.
 
 WHY THIS IS THE ONE THAT MATTERS. The README and the presentation lead with
 "98% quality at 3.5x lower cost than uniform" — Track A's headline. That number
-was produced by the `threshold` allocator, which D023 later showed can
+was produced by the `threshold` allocator, which later measurement showed can
 effectively never grant a third round (0 of 35 sub-questions crossed the bar).
 So the headline currently describes a strategy we have since diagnosed as
-partly broken, and the replacement (`scheduler`, D027) has only ever run
+partly broken, and the replacement (`scheduler`) has only ever run
 against a mock.
 
 Three arms, one harness, identical test cases:
@@ -15,7 +15,7 @@ Three arms, one harness, identical test cases:
              Every sub-question gets exactly one round; nothing is adaptive.
              This is the honest baseline, and getting it as a *parameter*
              rather than a separate code path is one of the scheduler's design
-             payoffs (D027).
+             payoffs .
   threshold  the shipped allocator: per-sub-question budget from an absolute
              difficulty bar.
   scheduler  global pool allocated by RANKING marginal value.

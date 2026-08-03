@@ -7,8 +7,8 @@ Test cases 1-4 map to the PDF brief's original test cases:
 3. Sparse evidence (retrieval methods comparison)
 4. Simpler factual (transformer architecture basics)
 
-Test cases 5-7 were added to enlarge the suite past 4 questions (DECISIONS.md
-D012 flags 4 as "too small for statistical significance") and to specifically
+Test cases 5-7 were added to enlarge the suite past 4 questions (4 being too
+small for statistical significance) and to specifically
 stress claim evolution across multiple rounds and a second data point in the
 "quiet baseline" bucket, rather than relying on tc4 alone:
 5. A second factual baseline, different domain, for more signal on the

@@ -70,7 +70,7 @@ class Metrics:
     judge_improved_rate: float = 0.0  # improved / (improved + worse + same)
 
     # --- Reversal-gate diagnostics (min_sources_for_reversal, quote-grounding) ---
-    # See DECISIONS.md D022 / TESTING.md for what these catch: a single thin
+    # What these catch: a single thin
     # source outvoting everything else, and refutation claimed from evidence
     # that never actually discusses the claim.
     dropped_ungrounded_refutations: int = 0
@@ -204,7 +204,7 @@ def compute_metrics(
     # For calibration, we need "ground truth" — whether each claim is actually correct.
     # Since we don't have ground truth labels, we use support_score as a proxy:
     # claims with support_score >= 0.5 are "correct", below are "incorrect".
-    # This is a proxy calibration (documented in DECISIONS.md).
+    # This is a proxy calibration (documented in DESIGN.md).
     confidences = np.array([c.confidence or 0.5 for c in claims])
     accuracies = np.array([1.0 if (c.support_score or 0) >= 0.5 else 0.0 for c in claims])
 

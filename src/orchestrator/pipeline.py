@@ -87,7 +87,7 @@ def run_research(
         )
         # The challenger gets its OWN client so it can sit on a different
         # provider entirely, not merely a different model string. Independence
-        # from the extractor is the whole point (DECISIONS.md D021).
+        # from the extractor is the whole point.
         challenger_key = os.environ.get(
             config.evolution.challenger_api_key_env or config.llm.api_key_env, ""
         )
@@ -161,7 +161,7 @@ def run_research(
             config=config,
             round_num=round_num,
             # Reuses the challenger client for judging: it is already
-            # independent from the extractor (DECISIONS.md D021), so no
+            # independent from the extractor, so no
             # third API client is needed for this second quality signal.
             judge_llm=challenger_llm,
         )
@@ -290,7 +290,7 @@ def run_research(
         state,
         synth_llm=synth_llm,
         # Independent critic: reuses the challenger's client, which is already
-        # a different model from the synthesizer (DECISIONS.md D021).
+        # a different model from the synthesizer.
         critic_llm=challenger_llm,
         sub_llm=sub_llm,
         challenger_llm=challenger_llm,

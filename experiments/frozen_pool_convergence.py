@@ -3,7 +3,7 @@ Frozen-pool convergence experiment.
 
 THE QUESTION. Every multi-round result so far is confounded: each round also ran
 fresh retrieval, so "claims kept changing" could mean either "the loop doesn't
-converge" or "new evidence legitimately kept arriving." TESTING.md section 11
+converge" or "new evidence legitimately kept arriving." The earlier evaluation
 flagged this explicitly as unresolved. This isolates it by FREEZING the evidence
 pool and re-challenging the same claims against the same evidence repeatedly.
 If the loop converges, revisions should die out. If it doesn't, claims will keep

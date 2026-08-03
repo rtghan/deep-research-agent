@@ -7,8 +7,7 @@ both arXiv and web search on every single round. Round 3 of retrieval for a
 sub-question issued the identical query round 1 did. Extra rounds therefore only
 paged deeper into the same ranked result list — they added evidence *volume*,
 not new *angles*. That is a large part of why the 7-test-case multiround
-evaluation found that accumulating rounds barely moved confidence or difficulty
-(TESTING.md section 11, DECISIONS.md D023): the second round largely re-confirmed
+evaluation found that accumulating rounds barely moved confidence or difficulty: the second round largely re-confirmed
 what the first already said, because it asked the same question.
 
 This is the Search-R1 idea in its cheapest useful form: the agent should reason

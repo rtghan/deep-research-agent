@@ -24,8 +24,7 @@ confound except the formula itself. The decomposition that matters:
 ABLATION 2 — ROUTING THRESHOLD SENSITIVITY
 `route_operation` is a pure function of a challenge result plus config, and
 715 real challenge records are stored across the eval runs. Every hand-tuned
-constant in it can therefore be swept for free. D005 concedes the weightings
-are "hand-tuned, no sensitivity analysis"; this is that analysis, and it
+constant in it can therefore be swept for free. The weightings were hand-tuned with no sensitivity analysis; this is that analysis, and it
 answers the obvious interview question ("where do your thresholds come from?")
 with a curve instead of a shrug.
 """
@@ -152,7 +151,7 @@ import copy
 print("SHIPPED CONFIG:")
 base_d = show("(shipped)", base)
 
-print("\nmin_sources_for_reversal — the D022 fix:")
+print("\nmin_sources_for_reversal — the reversal gate:")
 for v in (0, 1, 2, 3, 4):
     cfg = copy.deepcopy(base); cfg.evolution.min_sources_for_reversal = v
     show(f"min_sources={v}" + ("  <- shipped" if v == 2 else ""), cfg, base_d)

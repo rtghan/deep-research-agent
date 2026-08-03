@@ -1,7 +1,7 @@
 """
 Judge — an independent, blind quality check on a claim revision.
 
-WHY THIS EXISTS. The 2026-08 real-model evaluation (see TESTING.md) measured
+WHY THIS EXISTS. The 2026-08 real-model evaluation measured
 revision quality with `support_lift`: the change in the verifier's support
 score before vs. after a revision. Across three of four test cases,
 support_lift was NEGATIVE despite qualitative inspection showing many

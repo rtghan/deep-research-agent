@@ -1,0 +1,126 @@
+# Research Report: Comparing Sparse Retrieval (BM25) and Dense Retrieval Methods
+
+## Executive Summary
+This report synthesizes findings on the principles, mechanisms, and performance of sparse retrieval methods like BM25 and dense retrieval methods, particularly those based on neural networks. Sparse retrieval methods excel in scenarios requiring precise keyword matching and are widely used for their efficiency in generating candidates for retrieval tasks. In contrast, dense retrieval methods leverage deep learning to match queries and documents semantically, making them effective for natural language queries and conceptual matching. However, they may struggle with exact-match queries and can be computationally expensive. Empirical studies indicate that while BM25 performs competitively in certain contexts, dense retrieval methods can significantly improve recall in others. Hybrid approaches that combine both methods are emerging as a promising solution to leverage the strengths of each.
+
+## Findings
+
+### What are the fundamental principles and mechanisms behind sparse retrieval methods like BM25?
+BM25 is widely used in sparse retrieval, though other ranking functions are also prevalent in the field. [confidence: 0.88 · supported · Source: How to Implement Sparse Retrieval; Hybrid Retrieval: Combining Sparse and Dense Methods ...; Dense vs. Sparse Retrieval: What They Are, Differences, ...; Hybrid Retrieval: Combining Sparse and Dense Methods ...] BM25 improves upon TF-IDF by adding document length normalization and term frequency saturation. [confidence: 0.90 · supported · Source: How to Implement Sparse Retrieval] Sparse retrieval methods like BM25 operate on exact term matching and inverse document frequency statistics. [confidence: 0.90 · supported · Source: Hybrid Retrieval: Combining Sparse and Dense Methods ...] They excel at scenarios requiring precise keyword matching. [confidence: 0.90 · supported · Source: Hybrid Retrieval: Combining Sparse and Dense Methods ...] Sparse retrieval assigns weights to individual terms and retrieves documents based on shared terms between the query and the document. [confidence: 0.90 · supported · Source: Dense vs. Sparse Retrieval: What They Are, Differences, ...] BM25 is a probabilistic ranking function that adjusts term importance using parameters k1 and b. [confidence: 0.90 · supported · Source: Dense vs. Sparse Retrieval: What They Are, Differences, ...] Sparse retrieval uses statistical scoring techniques for keyword-based ranking. [confidence: 0.90 · supported · Source: Dense vs. Sparse Retrieval: What They Are, Differences, ...] The first stage of hybrid retrieval systems uses sparse retrieval methods like BM25 for fast candidate generation. [confidence: 0.90 · supported · Source: Hybrid Retrieval: Combining Sparse and Dense Methods ...] Evidence suggests that sparse retrieval indexes terms using inverted index structures. [confidence: 0.65 · supported · Source: Dense vs. Sparse Retrieval: What They Are, Differences, ...] 
+
+### What are the key characteristics and mechanisms of dense retrieval methods, such as those based on neural networks?
+Dense retrieval projects queries and items into a continuous vector space using deep neural networks. [confidence: 0.90 · supported · Source: Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation] Dense retrieval enables matching by semantics rather than keywords in specific domains, such as fashion, where keyword matching fails due to vocabulary mismatch. [confidence: 0.85 · supported · Source: Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation; Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation; Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation] Contrastive learning is the standard method for training dense retrievers. [confidence: 0.65 · supported · Source: Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation] Bi-encoder architectures encode queries and documents independently, and the similarity score is computed as a dot product. [confidence: 0.65 · supported · Source: Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation] Dense retrieval can improve recall for intent-based queries. [confidence: 0.65 · supported · Source: Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation] However, dense retrieval introduces challenges such as semantic drift and entity confusion. [confidence: 0.65 · supported · Source: Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation] The fine-tuned model demonstrates a 153% increase in Recall@10 over a BM25 baseline. [confidence: 0.65 · supported · Source: Domain-Adaptive and Scalable Dense Retrieval for Content-Based Recommendation] Dense retrieval methods can be computationally expensive and may scale linearly with the number of rewrites in the context of conversational passage retrieval. [confidence: 0.85 · supported · Source: A Surprisingly Simple yet Effective Multi-Query Rewriting Method for Conversational Passage Retrieval] 
+
+### In what scenarios or types of queries is BM25 typically more effective than dense retrieval methods?
+BM25 shows competitive ranking quality compared to TILDE and TILDEv2 in query-by-example retrieval, particularly for certain types of queries, though prior work indicates it may not be as effective for short queries. [confidence: 0.85 · supported · Source: On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval] BM25 can outperform TILDE and TILDEv2 in some cases specifically in the query-by-example retrieval setting. [confidence: 0.88 · supported · Source: On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval; On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval; On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval] BM25 is a strong baseline for query-by-example tasks when compared to TILDE models, though it struggles with complex queries and is outperformed by multiple representation approaches. [confidence: 0.67 · supported · Source: On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval; On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval; On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval; On Single and Multiple Representations in Dense Passage Retrieval]
+
+### What situations or types of queries favor the use of dense retrieval methods over sparse retrieval methods like BM25?
+Dense retrieval methods work better with natural language queries in certain contexts, such as conversational passage retrieval, though BM25 outperforms them in specific domains and query types, particularly for exact-match queries. [confidence: 0.78 · supported · Source: A Surprisingly Simple yet Effective Multi-Query Rewriting Method for Conversational Passage Retrieval; On Single and Multiple Representations in Dense Passage Retrieval; Hybrid Search: BM25, Vector & Reranking Reference 2026; Hybrid Search for RAG: Combining BM25 and Dense Vector Search (2026 Guide)] Dense retrieval methods can handle conceptual and paraphrase queries effectively, though they may underperform on exact-match queries and certain document types, particularly in financial contexts. [confidence: 0.82 · supported · Source: Hybrid Search: BM25, Vector & Reranking Reference 2026; Hybrid Search for RAG: Combining BM25 and Dense Vector Search (2026 Guide); Dense vs. Sparse Retrieval: What They Are, Differences, ...] Queries that are purely conversational may be better suited for dense retrieval methods. [confidence: 0.65 · supported · Source: Hybrid Search for RAG: Combining BM25 and Dense Vector Search (2026 Guide)] 
+
+### What empirical studies or benchmarks exist that compare the performance of BM25 and dense retrieval methods across various datasets?
+BM25 shows competitive ranking quality compared to TILDE and TILDEv2 in Query-by-Example retrieval. [confidence: 0.90 · supported · Source: On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval; On the Interpolation of Contextualized Term-based Ranking with BM25 for Query-by-Example Retrieval] Dense retrieval improves relevance by 10-20% on the MS MARCO dataset compared to BM25, which achieves approximately 42.9 NDCG@10. [confidence: 0.85 · supported · Source: Dense vs. Sparse Retrieval: What They Are, Differences, ...] Empirical benchmarks confirm that documents missed by BM25 are often found by dense retrieval, and vice versa. [confidence: 0.65 · supported · Source: Hybrid Search: BM25 and Dense Retrieval Combined - Interactive | Michael Brenndoerfer | Michael Brenndoerfer]
+
+## Contradictions & Disagreements
+While BM25 is effective for exact-match queries, dense retrieval methods are noted for their ability to handle semantic matching, particularly in natural language contexts. However, dense retrieval may struggle with rare terms, while BM25 excels in those scenarios. This presents a nuanced view where both methods have strengths and weaknesses depending on the query type and context.
+
+## How Claims Changed
+Several claims were revised as evidence accumulated. Notably, the understanding of dense retrieval's effectiveness was refined to acknowledge its limitations in handling exact-match queries and the computational costs associated with its use. Claims regarding BM25's performance were also narrowed to reflect its competitive standing in specific contexts rather than universally superior performance.
+
+## Known Gaps & Limitations
+There is insufficient evidence regarding the performance of dense retrieval methods under various engineering optimizations, particularly concerning latency challenges. Additionally, while some claims about hybrid approaches are supported, the specific contexts in which they outperform either method alone require further exploration.
+
+---
+
+## Claim Confidence Index
+
+_Generated directly from the system's internal state, not written by the report model — every claim the report draws on, with the confidence the system actually assigned it._
+
+
+**What are the fundamental principles and mechanisms behind sparse retrieval methods like BM25?**
+
+| Confidence | Status | Claim | Sources |
+|---|---|---|---|
+| 0.90 | supported | BM25 improves upon TF-IDF by adding document length normalization and term frequency saturation. | How to Implement Sparse Retrieval |
+| 0.90 | supported | Sparse retrieval methods like BM25 operate on exact term matching and inverse document frequency statistics. | Hybrid Retrieval: Combining Sparse and Dense Methods ... |
+| 0.90 | supported | Sparse retrieval methods excel at scenarios requiring precise keyword matching. | Hybrid Retrieval: Combining Sparse and Dense Methods ... |
+| 0.90 | supported | Sparse retrieval assigns weights to individual terms and retrieves documents based on shared terms between the query and the document. | Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.90 | supported | BM25 is a probabilistic ranking function that adjusts term importance using parameters k1 and b. | Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.90 | supported | Sparse retrieval uses statistical scoring techniques for keyword-based ranking. | Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.90 | supported | The first stage of hybrid retrieval systems uses sparse retrieval methods like BM25 for fast candidate generation. | Hybrid Retrieval: Combining Sparse and Dense Methods ... |
+| 0.88 | supported (v2, narrow) | BM25 is widely used in sparse retrieval, though other ranking functions are also prevalent in the field. | How to Implement Sparse Retrieval; Hybrid Retrieval: Combining Sparse and Dense Methods ...; Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.65 | supported | Sparse retrieval indexes terms using inverted index structures. | Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+
+**What are the key characteristics and mechanisms of dense retrieval methods, such as those based on neural networks?**
+
+| Confidence | Status | Claim | Sources |
+|---|---|---|---|
+| 0.90 | supported | Dense retrieval projects queries and items into a continuous vector space using deep neural networks. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.85 | supported (v2, narrow) | Dense retrieval enables matching by semantics rather than keywords in specific domains, such as fashion, where keyword matching fails due to vocabulary mismatch. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.73 | insufficient | Neural retrieval architectures can be categorized into cross-encoders and bi-encoders. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Contrastive learning is the standard method for training dense retrievers. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Bi-encoder architectures encode queries and documents independently. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | The similarity score in bi-encoder architectures is computed as a dot product. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Vector quantization can compress embeddings at the cost of some recall. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Post-training INT8 quantization reduces model memory bandwidth and can accelerate CPU inference. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Dense retrieval can improve recall for intent-based queries. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Dense retrieval introduces challenges such as semantic drift and entity confusion. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | The fine-tuned model demonstrates a 153% increase in Recall@10 over a BM25 baseline. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | The int8 model achieves p99 latency of 8.4 ms. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Converting from FP32 to int8 yields a substantial improvement in p50 latency. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Hybrid retrieval approaches combine lexical matching with dense representations. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | Dense retrieval is based on neural embeddings that facilitate the shift from keyword matching to semantic matching. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.65 | supported | The bi-encoder architecture allows for efficient Maximum Inner Product Search (MIPS). | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.60 | insufficient (v2, narrow) | Approximate nearest neighbor indexing is essential for large-scale dense retrieval in certain contexts, though other methods may also be viable. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.60 | insufficient (v2, narrow) | HNSW and FAISS are widely used methods for approximate nearest neighbor indexing in large-scale dense retrieval systems. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+| 0.54 | insufficient (v2, reverse) | Domain-adaptive fine-tuning is not necessary for dense retrieval to capture subtle domain-specific attributes, as advanced contextualized language models can effectively capture semantic relationships without explicit domain adaptation. | On Single and Multiple Representations in Dense Passage Retr; Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.35 | insufficient (v2, narrow) | Dense retrieval methods can achieve low latency and high throughput for interactive content-based recommendation under specific engineering optimizations, though significant latency challenges exist that may exceed typical interactive thresholds. | Domain-Adaptive and Scalable Dense Retrieval for Content-Bas |
+
+**In what scenarios or types of queries is BM25 typically more effective than dense retrieval methods?**
+
+| Confidence | Status | Claim | Sources |
+|---|---|---|---|
+| 0.88 | supported (v2, narrow) | BM25 can outperform TILDE and TILDEv2 in some cases specifically in the query-by-example retrieval setting. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.85 | supported (v2, narrow) | BM25 shows competitive ranking quality compared to TILDE and TILDEv2 in query-by-example retrieval, particularly for certain types of queries, though prior work indicates it may not be as effective for short queries. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.85 | supported (v2, narrow) | TILDE and TILDEv2 capture different relevance signals compared to BM25 specifically in the context of Query-by-Example retrieval. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.85 | supported (v2, narrow) | TILDEv2 is less effective than TILDE in query-by-example retrieval due to vocabulary mismatch, although there are cases where BM25 shows competitive performance compared to both models. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.67 | supported (v2, narrow) | BM25 is a strong baseline for query-by-example tasks when compared to TILDE models, though it struggles with complex queries and is outperformed by multiple representation approaches. | On the Interpolation of Contextualized Term-based Ranking wi; On Single and Multiple Representations in Dense Passage Retr |
+| 0.65 | supported | Contextualized term-based models like TILDE and TILDEv2 are less effective in query-by-example retrieval than expected. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.65 | supported | The optimal interpolation weight for combining BM25 with TILDE and TILDEv2 varies per query. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.62 | insufficient (v2, narrow) | Combining BM25 with contextualized models can yield statistically significant improvements in certain retrieval contexts, though this is not universally applicable across all scenarios. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.57 | supported (v2, narrow) | Interpolation of BM25 with TILDE and TILDEv2 leads to an improvement in ranking effectiveness for certain queries, though BM25 can be competitive with TILDE and TILDEv2 in other cases. | On the Interpolation of Contextualized Term-based Ranking wi |
+
+**What situations or types of queries favor the use of dense retrieval methods over sparse retrieval methods like BM25?**
+
+| Confidence | Status | Claim | Sources |
+|---|---|---|---|
+| 0.90 | supported (v2, narrow) | Dense retrieval methods may underweight exact rare-term matches compared to sparse methods like BM25, particularly for queries requiring precise term matching. | Hybrid Search: BM25, Vector & Reranking Reference 2026; Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.90 | supported | Hybrid search combines sparse keyword retrieval (BM25) with dense vector retrieval. | Hybrid Search: BM25, Vector & Reranking Reference 2026 |
+| 0.88 | supported | Sparse retrieval methods like BM25 excel at exact-match queries, such as product codes and named entities. | Hybrid Search: BM25, Vector & Reranking Reference 2026 |
+| 0.85 | supported (v2, narrow) | Dense retrieval methods struggle when the query contains a rare term that appears infrequently, though some methods, such as those using multiple representations, can effectively handle such queries. | Hybrid Search: BM25, Vector & Reranking Reference 2026; On Single and Multiple Representations in Dense Passage Retr |
+| 0.85 | supported (v2, narrow) | Dense retrieval methods can be computationally expensive and may scale linearly with the number of rewrites in the context of conversational passage retrieval. | A Surprisingly Simple yet Effective Multi-Query Rewriting Me |
+| 0.85 | supported (v2, narrow) | BM25 outperformed state-of-the-art dense retrieval on financial documents on every metric except Recall@20, though this performance may vary depending on the specific query types and datasets used. | Hybrid Search for RAG: Combining BM25 and Dense Vector Searc |
+| 0.82 | supported (v2, narrow) | Dense retrieval methods can handle conceptual and paraphrase queries effectively, though they may underperform on exact-match queries and certain document types, particularly in financial contexts. | Hybrid Search: BM25, Vector & Reranking Reference 2026; Hybrid Search for RAG: Combining BM25 and Dense Vector Searc; Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.78 | supported (v2, narrow) | Dense retrieval methods work better with natural language queries in certain contexts, such as conversational passage retrieval, though BM25 outperforms them in specific domains and query types, particularly for exact-match queries. | A Surprisingly Simple yet Effective Multi-Query Rewriting Me; On Single and Multiple Representations in Dense Passage Retr; Hybrid Search: BM25, Vector & Reranking Reference 2026 |
+| 0.65 | supported | Queries that are purely conversational may be better suited for dense retrieval methods. | Hybrid Search for RAG: Combining BM25 and Dense Vector Searc |
+| 0.65 | supported | If the corpus is small and uniform, dense retrieval methods may suffice. | Hybrid Search for RAG: Combining BM25 and Dense Vector Searc |
+| 0.65 | supported | If additional latency cannot be tolerated, it is better to stick with a single retrieval method. | Hybrid Search for RAG: Combining BM25 and Dense Vector Searc |
+
+**What empirical studies or benchmarks exist that compare the performance of BM25 and dense retrieval methods across various datasets?**
+
+| Confidence | Status | Claim | Sources |
+|---|---|---|---|
+| 0.90 | supported | BM25 shows competitive ranking quality compared to TILDE and TILDEv2 in Query-by-Example retrieval. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.90 | supported | BM25 achieves approximately 42.9 NDCG@10 on the BEIR benchmark. | Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.90 | supported | Dense retrieval models achieve 64.6 to 70.6 NDCG@10 on MTEB benchmarks. | Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.85 | supported (v2, narrow) | Combining BM25 with TILDE and TILDEv2 results in statistically significant improvements in Query-by-Example retrieval, though TILDE and TILDEv2 are less effective in this setting compared to ad hoc retrieval methods. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.85 | supported (v2, narrow) | TILDE and TILDEv2 capture different relevance signals than BM25 in the context of the SciDocs evaluation benchmark tasks, though there are specific tasks where TILDE and TILDEv2 do not show significant improvements over BM25. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.85 | supported (v2, narrow) | In some cases, BM25 can outperform TILDE and TILDEv2 specifically in Query-by-Example retrieval, though TILDE and TILDEv2 have shown superior ranking quality in other retrieval contexts. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.85 | supported (v2, narrow) | The relevance signals from contextualized ranking models TILDE and TILDEv2 are complementary to the relevance signals from BM25 in the context of query-by-example retrieval, though this complementarity may not hold in all scenarios. | On the Interpolation of Contextualized Term-based Ranking wi |
+| 0.85 | supported (v2, narrow) | Dense retrieval improves relevance by 10-20% on the MS MARCO dataset compared to BM25, which achieves approximately 42.9 NDCG@10. | Dense vs. Sparse Retrieval: What They Are, Differences, ... |
+| 0.65 | supported | Hybrid search combining BM25 and dense retrieval increases recall at depth K over either system alone. | Hybrid Search: BM25 and Dense Retrieval Combined - Interacti |
+| 0.65 | supported | Empirical benchmarks confirm that documents missed by BM25 are often found by dense retrieval, and vice versa. | Hybrid Search: BM25 and Dense Retrieval Combined - Interacti |
+
+**Retracted during verification (2)** — extracted from evidence, then withdrawn when challenged. Not used in the report above.
+
+- ~~BM25 is effective for longer queries in query-by-example retrieval.~~ — The claim that BM25 is effective for longer queries in query-by-example retrieval is unsupported because the evidence does not provide direct comparisons or con
+- ~~Domain-adaptive fine-tuning improves retrieval accuracy.~~ — The claim overgeneralizes from a single domain-specific result (e-commerce recommendations) to imply universal improvement in retrieval accuracy across all doma

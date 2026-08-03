@@ -12,7 +12,7 @@ and still fail — by never addressing one of its own sub-questions, by stating 
 0.4-confidence claim in flat declarative prose, by burying the answer under
 background, by detecting contradictions and then not telling the reader about
 them, or (a hard error) by quoting a claim the system already retracted.
-ARCHITECTURE.md section 12.5 predicted exactly this gap: "the system does not
+This gap was predicted in the original design: "the system does not
 detect synthesis errors — cases where the individual claims are correct but the
 report misinterprets or misassembles them."
 
@@ -26,7 +26,7 @@ judgment calls — overstatement, burial, whether the question was actually
 answered — instead of re-deriving what a substring check already proved.
 
 INDEPENDENT MODEL. The critic runs on a different model from the synthesizer,
-for the same reason the challenger does (DECISIONS.md D021), and more sharply:
+for the same reason the challenger does, and more sharply:
 report-level defects are the ones the user actually sees, so a critic that
 ratifies its own prose fails at the most consequential layer.
 """

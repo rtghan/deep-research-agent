@@ -18,7 +18,7 @@ Ablation 3 (Claim evolution): evolution off vs. on vs. on-with-self-challenger
   Same evidence, same claims, same prompts; only the challenger's identity
   changes, so a drop in challenge_hit_rate for `evolution_self` is a direct
   measurement of self-agreement bias rather than an assertion about it
-  (DECISIONS.md D006 flags this as the missing experiment).
+  (this was the long-standing missing experiment).
 
 Usage: python -m ablations.run_ablation
 """

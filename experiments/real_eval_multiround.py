@@ -1,12 +1,11 @@
 """
 Second real-model evaluation: multi-round evolution enabled (adaptive.max_budget
 raised so sub-questions can get multiple evolution passes, not just one) across
-the enlarged 7-test-case suite, with the D022 fixes (min_sources_for_reversal,
+the enlarged 7-test-case suite, with the reversal fixes (min_sources_for_reversal,
 quote-grounding, flaws-triggered refine, independent judge) in place.
 
-Goals this run is meant to answer (see TESTING.md section 10, "what's still
-open"):
-1. Do the D022 fixes actually improve support_lift / reduce bad reversals at
+Goals this run is meant to answer:
+1. Do the reversal fixes actually improve support_lift / reduce bad reversals at
    scale, not just on the single hand-seeded re-check?
 2. Does `stability_rounds` freezing actually reduce challenge volume/churn in
    later rounds, or do claims keep getting re-litigated indefinitely?
@@ -45,7 +44,7 @@ cfg.adaptive.max_budget = 4
 
 # Moderate challenge cap (not the "challenge everyone" cap=30 from the last
 # run) -- with 4x the rounds AND 7 (not 4) test cases, cap=30 would be a
-# combinatorial cost blowup. 15 was the ballpark this session's own TESTING.md
+# combinatorial cost blowup. 15 was the ballpark the earlier evaluation
 # recommended as a practical default.
 cfg.evolution.max_challenges_per_round = 15
 cfg.evolution.max_evidence_chunks = 16

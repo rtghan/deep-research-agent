@@ -143,7 +143,7 @@ class MockLLMClient:
 
         # If the prompt carries a revision history, a deterministic subset
         # declares a stalemate -- this is what exercises the challenger-memory
-        # branch (D029) in offline/mock runs, where no real model is present to
+        # branch in offline/mock runs, where no real model is present to
         # notice it is about to re-litigate a claim.
         if "REVISION HISTORY" in user and bucket >= 5:
             return {

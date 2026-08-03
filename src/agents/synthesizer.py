@@ -76,7 +76,7 @@ def _render_confidence_index(state, active_claims, evidence_map) -> str:
     A real run (gpt-4o-mini) emitted ZERO of them. The model kept the `[Source:]`
     attribution it had been doing all along and silently dropped the new part.
 
-    This is the same lesson quote-grounding taught in D022: when a property must
+    This is the same lesson quote-grounding taught: when a property must
     hold, asking a model nicely does not make it hold. So the index is rendered
     from `state.claims` in code — it cannot be dropped, cannot be miscopied, and
     cannot drift from the confidence the system actually computed. The prompt

@@ -53,7 +53,7 @@ class ClaimRevision(BaseModel):
     reasoning_after: Optional[float] = None
     challenger_model: str = ""
 
-    # --- Independent quality judgement (TESTING.md, 2026-08 evaluation) ---
+    # --- Independent quality judgement ---
     # support_after - support_before conflates "got more accurate" with "got
     # harder to fully entail" — a hedged, nuanced claim scores lower on strict
     # entailment even when it is a better reflection of the evidence. The judge
@@ -85,7 +85,7 @@ class Claim(BaseModel):
     challenges_survived: int = 0      # consecutive "keep" verdicts
     frozen: bool = False              # stable — stop paying to re-challenge it
 
-    # --- Oscillation detection (frozen-pool experiment, TESTING.md section 14) ---
+    # --- Oscillation detection (frozen-pool experiment) ---
     # A claim whose text returns to a value it already held is CYCLING, not
     # being refined: narrow -> reverse -> narrow back. The frozen-pool
     # experiment found 6/12 claims doing exactly this against evidence that
@@ -166,7 +166,7 @@ class ChallengeRecord(BaseModel):
     # The specific metric/aspect the challenger says is in dispute (e.g.
     # "instruction-following accuracy", not "open-ended generalization").
     # Logged for auditability of the 2026-08 metric-conflation finding
-    # (TESTING.md) — a reversal citing evidence about a DIFFERENT dimension
+    # — a reversal citing evidence about a DIFFERENT dimension
     # than the claim is a red flag visible directly in the trace.
     contested_dimension: str = ""
     # Verbatim quotes the challenger cited as refuting evidence, after

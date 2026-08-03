@@ -2,8 +2,8 @@
 Prompt-injection robustness test (defensive; our own system).
 
 WHY. The system ingests arbitrary web pages and PDFs and feeds that text
-verbatim into the verifier and challenger prompts. SUBMISSION_REVIEW.md and the
-README both name prompt injection as the sharpest unaddressed risk, and the
+verbatim into the verifier and challenger prompts. Prompt injection is the
+sharpest unaddressed risk for this architecture, and the
 brief (§2.1) asks you to identify "the concerns we haven't mentioned" that
 matter most for *this* architecture. For a system whose entire value
 proposition is trustworthy verification, an attacker who can flip a verdict by
