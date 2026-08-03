@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Deep Research Agent — Reinforce Labs</title>
+<style>
+  :root{
+    --bg:#0e1116; --fg:#e6edf3; --dim:#8b949e; --line:#21262d;
+    --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--sans)}
+  .deck{height:100vh;overflow:hidden;position:relative}
+  .slide{
+    position:absolute;inset:0;display:none;flex-direction:column;
+    padding:4vh 6vw 8vh;overflow-y:auto;
+  }
+  .slide.active{display:flex}
+  h1{font-size:clamp(2rem,5vw,3.6rem);line-height:1.1;margin:0 0 1rem;font-weight:700;letter-spacing:-.02em}
+  h2{font-size:clamp(1.4rem,3vw,2.3rem);line-height:1.15;margin:0 0 1.2rem;font-weight:650;letter-spacing:-.015em}
+  h3{font-size:clamp(1rem,1.7vw,1.25rem);margin:1.4rem 0 .5rem;color:var(--accent);font-weight:600}
+  p,li{font-size:clamp(.95rem,1.45vw,1.15rem);line-height:1.5;margin:.45rem 0}
+  ul{margin:.4rem 0;padding-left:1.3rem}
+  li{margin:.4rem 0}
+  li::marker{color:var(--dim)}
+  .kicker{color:var(--accent);font-family:var(--mono);font-size:.8rem;letter-spacing:.12em;
+    text-transform:uppercase;margin-bottom:.8rem}
+  .lede{font-size:clamp(1.05rem,1.9vw,1.4rem);color:var(--fg);line-height:1.45;max-width:60ch}
+  .dim{color:var(--dim)}
+  .good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  strong{color:#fff;font-weight:650}
+  code{font-family:var(--mono);font-size:.88em;background:#161b22;padding:.12em .38em;
+    border-radius:4px;border:1px solid var(--line)}
+  table{border-collapse:collapse;margin:.9rem 0;font-size:clamp(.8rem,1.2vw,1rem);width:100%;max-width:900px}
+  th,td{text-align:left;padding:.45rem .8rem;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;font-size:.85em;text-transform:uppercase;letter-spacing:.05em}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  tr.hi td{background:rgba(88,166,255,.09)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:2.2rem;align-items:start}
+  .box{border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;background:#11161d}
+  .box.accent{border-color:rgba(88,166,255,.45)}
+  .box.bad{border-color:rgba(248,81,73,.4)}
+  .box.good{border-color:rgba(63,185,80,.4)}
+  .big{font-family:var(--mono);font-size:clamp(1.8rem,4vw,3rem);font-weight:700;line-height:1}
+  pre{font-family:var(--mono);font-size:clamp(.62rem,1.02vw,.84rem);line-height:1.4;
+    background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:1rem;overflow-x:auto}
+  .note{border-left:3px solid var(--accent);padding:.2rem 0 .2rem 1rem;color:var(--dim);
+    margin:1rem 0;font-size:.95em}
+  .note.bad{border-color:var(--bad)}
+  .note.warn{border-color:var(--warn)}
+  footer{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:space-between;
+    padding:.7rem 2vw;font-family:var(--mono);font-size:.72rem;color:var(--dim);
+    border-top:1px solid var(--line);background:var(--bg);z-index:10}
+  .prog{position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:11;transition:width .2s}
+  .say{display:none;margin-top:auto;padding-top:1rem;border-top:1px dashed var(--line);
+    color:var(--warn);font-size:.9rem;max-width:75ch}
+  body.notes .say{display:block}
+  .tag{display:inline-block;font-family:var(--mono);font-size:.68rem;padding:.15rem .5rem;
+    border:1px solid var(--line);border-radius:99px;color:var(--dim);margin-left:.5rem;vertical-align:middle}
+  @media print{
+    .slide{display:flex!important;position:relative;height:100vh;page-break-after:always;border:0}
+    footer,.prog{display:none} html,body,.deck{height:auto;overflow:visible}
+    :root{--bg:#fff;--fg:#111;--dim:#555;--line:#ddd}
+    pre,.box{background:#f6f8fa}
+  }
+</style>
+</head>
+<body>
+<div class="prog" id="prog"></div>
+<div class="deck" id="deck">
+
+<!-- 1 -->
+<section class="slide">
+  <div class="kicker">Research Engineer Take-Home · Reinforce Labs</div>
+  <h1>Deep Research Agent</h1>
+  <p class="lede">“Never let a claim outlive the evidence for it.”</p>
+  <div style="margin-top:2.5rem" class="dim">
+    <p>A research agent whose claims are <strong>not append-only</strong> — they are re-attacked,
+    revised, reversed, and retracted as evidence accumulates.</p>
+  </div>
+  <div class="say"><strong>Open:</strong> "I'll show you a system, and then I'll show you six experiments — four of which proved me wrong. The second part is the more useful half."</div>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <div class="kicker">The failure mode I built against</div>
+  <h2>Most research agents are append-only</h2>
+  <p>Round 1 extracts a claim. Rounds 2–N pile more text <em>next to it</em>.
+  Nothing goes back and asks whether claim&nbsp;#4 is still true given what round&nbsp;3 found.</p>
+  <div class="box bad" style="margin-top:1rem">
+    <p style="margin:0"><strong>What the old system did</strong> when round 3 contradicted a round-1 claim:
+    a second, peer claim appeared beside it. The contradiction detector noticed the pair at the very
+    end and applied a flat 0.3 confidence penalty to both.</p>
+    <p style="margin:.6rem 0 0" class="bad">Nobody ever said “claim_3 was wrong; here is the corrected version.”</p>
+  </div>
+  <p style="margin-top:1.2rem">That is the “comfortable, wrong answer” the brief names.
+  <strong>The interesting problem in deep research isn’t retrieval — it’s revision.</strong></p>
+  <div class="say">Have the real before/after RAG claim pair ready as the concrete anchor.</div>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <div class="kicker">Thesis</div>
+  <h2>Spend where evidence is thin · calibrate honestly · never let a claim outlive its evidence</h2>
+  <table>
+    <tr><th>Track</th><th>Idea</th><th>Status after measurement</th></tr>
+    <tr><td><strong>A</strong> adaptive compute</td><td>allocate rounds by difficulty</td>
+        <td class="warn">claim survives only vs. the max baseline — see slide 14</td></tr>
+    <tr><td><strong>B</strong> grounded verification</td><td>verify every claim, calibrate</td>
+        <td class="good">verifier load-bearing; calibration story rewritten</td></tr>
+    <tr class="hi"><td><strong>C</strong> claim evolution</td><td>challenger → arithmetic router → reviser</td>
+        <td class="good">570 revisions, 81.7% judged improvements</td></tr>
+  </table>
+  <p><strong>C is the contribution; A and B are its prerequisites.</strong>
+  A buys the compute headroom to afford re-attacking claims. B produces the <code>support_score</code>
+  the router does arithmetic on. One mechanism and its two preconditions — not three features.</p>
+  <div class="say">Flag early that Track A's headline gets qualified later. Better to pre-announce than be caught.</div>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <div class="kicker">Choose your depth</div>
+  <h2>Research + evaluation, not orchestration-at-scale</h2>
+  <div class="cols">
+    <div>
+      <h3>Chosen</h3>
+      <ul>
+        <li>Test-time compute allocation</li>
+        <li>Self-correction at claim <em>and</em> report level</li>
+        <li>The measurement problem the brief poses directly:
+        <em>“No ground truth exists for a research report. How do you know yours is good?”</em></li>
+      </ul>
+    </div>
+    <div>
+      <h3>Explicitly not chosen</h3>
+      <ul>
+        <li>Orchestration infra at scale</li>
+        <li class="dim">Cost: no parallelism, no resume, no caching</li>
+        <li class="dim">Sub-questions are independent by construction and still run serially</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note">Returns on slide 18. Don’t oversell the trade here.</div>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <div class="kicker">Full design · 1 of 7</div>
+  <h2>The pipeline</h2>
+<pre>Query
+ └─ Planner ─────────────────────────── sub-questions
+     └─ per sub-question, per round:
+         Difficulty → Allocator (budget)
+         Researcher ── r1: verbatim | r2+: <span style="color:#58a6ff">reformulated to target the gap</span>
+         Extractor → Verifier
+         ┌─ <span style="color:#3fb950">CLAIM EVOLUTION</span> ──────────────────────────┐
+         │ Challenger (independent model, quote-grounded) │
+         │ Router  <span style="color:#d29922">(arithmetic, not an LLM judgement)</span>     │
+         │   keep │ refine │ narrow │ reverse │ retract   │
+         │ Reviser → re-verify → blind pairwise judge     │
+         └────────────────────────────────────────────────┘
+         confidence → difficulty feedback → loop?
+ ├─ Contradiction detection (cross-source only)
+ ├─ Synthesizer → report + deterministic confidence index
+ └─ <span style="color:#3fb950">PHASE 5 — report self-correction</span>
+     mechanical checks (no LLM) → independent critic
+     → accept │ revise_report │ reopen research</pre>
+  <p><strong>Two loops, and they are the only two places the system may change its mind:</strong>
+  within a sub-question, and over the finished report.</p>
+  <div class="say">Point at the closed feedback loop: verifier confidence → difficulty → budget. Track B's output IS Track A's input.</div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <div class="kicker">Full design · 2 of 7</div>
+  <h2>Agent boundaries: a seam exists where the <em>objective</em> differs</h2>
+  <table>
+    <tr><th>Agent</th><th>Optimises for</th></tr>
+    <tr><td>Extractor</td><td>coverage</td></tr>
+    <tr><td>Verifier</td><td><strong>entailment</strong> — does the cited text support this?</td></tr>
+    <tr class="hi"><td>Challenger</td><td><strong>warrant</strong> — is this sound given the whole pool?</td></tr>
+    <tr><td>Report critic</td><td>did we answer the question that was asked?</td></tr>
+  </table>
+  <p>The verifier/challenger split is the sharp one: a claim can restate one cherry-picked chunk
+  faithfully — <strong>support 1.0</strong> — and still be an unsound overgeneralization.
+  <code>support_score</code> cannot express that; <code>reasoning_score</code> is a separate axis.</p>
+  <h3>The anti-case</h3>
+  <p><strong>No debate ensemble.</strong> Cost multiplies by N; the extractor→verifier split is already
+  an author–reviewer pattern at the claim level, which is where the errors are.
+  <strong>Plain Python, no framework</strong> — ~1,500 lines, <code>pipeline.py</code> readable end-to-end.
+  Cost: no durable execution, no resume.</p>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <div class="kicker">Full design · 3 of 7 · core slide</div>
+  <h2>Claim evolution — the router is <em>arithmetic</em></h2>
+  <p><code>balance = (supporting − refuting) / (supporting + refuting)</code>,
+  counted by <strong>distinct source, not chunk</strong> — one paper split into forty chunks must not
+  outvote three papers that disagree.</p>
+  <table>
+    <tr><th>Condition</th><th>Operation</th></tr>
+    <tr><td>balance &gt; 0.5 · reasoning ≥ 0.6</td><td><code>keep</code></td></tr>
+    <tr><td>balance &gt; 0.5 · reasoning &lt; 0.6</td><td><code>refine</code></td></tr>
+    <tr><td>−0.3 ≤ balance ≤ 0.5</td><td><code>narrow</code></td></tr>
+    <tr class="hi"><td>balance &lt; −0.3 <span class="dim">(and ≥ 2 distinct sources)</span></td><td><code>reverse</code></td></tr>
+    <tr><td>balance &lt; −0.3 + verdict <code>unsupported</code></td><td><code>retract</code></td></tr>
+  </table>
+  <p><strong>Why arithmetic:</strong> an aggressive critic must not flip a well-supported claim by being loud.
+  The reason a claim reversed is <em>a number in the trace</em>, and evolution’s aggressiveness is a
+  config knob rather than a prompt rewrite.</p>
+  <div class="note">Asymmetry: the reviser may <em>escalate</em> to retract, but cannot <em>downgrade</em> an assigned reversal into something more convenient.</div>
+  <div class="say">Budget 3 minutes here alone. This is the contribution.</div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <div class="kicker">Full design · 4 of 7</div>
+  <h2>Memory &amp; context</h2>
+  <ul>
+    <li><strong>State lives in Pydantic, not a context window.</strong> Each agent sees only its own
+    inputs; the orchestrator decides what is visible. No agent ever sees full pipeline state.
+    Zero context-overflow errors across every run.</li>
+    <li><strong>Compaction where it matters.</strong> The query reformulator never sees the evidence pool
+    (hundreds of chunks, growing every round) — only a digest of prior queries, returned source titles,
+    and the weakest standing claims. A summary of “what we did and what it got us” is cheaper
+    <em>and</em> more actionable than the text it summarises.</li>
+    <li><strong>What agents deliberately do NOT share:</strong> sub-questions share nothing. If sq_1
+    retrieves a paper relevant to sq_3, sq_3 re-retrieves it. Keeps them parallelisable; wasteful.</li>
+  </ul>
+  <div class="note warn">Flagged before you find it: evidence selection into the challenger prompt is
+  round-robin by source, <em>not semantic</em>. Pairs with the embeddings gap on slide 18.</div>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <div class="kicker">Full design · 5 of 7</div>
+  <h2>Tools &amp; failure — the real story is boundary bugs</h2>
+  <p>arXiv primary (no key, PDF-first with abstract fallback); web secondary via
+  Tavily → DuckDuckGo → Wikipedia. PDF extraction degrades to <code>''</code> rather than crashing.</p>
+  <h3>Three real-model failures a mock could never produce</h3>
+  <ol>
+    <li><code>gemma-4-26b</code> returned a bare JSON <strong>list</strong> where an object was requested
+    → <code>'list' object has no attribute 'get'</code></li>
+    <li><code>deepseek-chat</code> returned <strong>HTTP 200 with <code>choices: None</code></strong>
+    — a genuinely incomplete response body</li>
+    <li>Rate limits crashed two full runs — no retry/backoff exists</li>
+  </ol>
+  <p>Fixed <strong>once at the <code>LLMClient</code> boundary</strong>, not in the six call sites:
+  non-dict parses wrap to <code>{"_unparsed": …}</code> so every <code>.get(k, default)</code> degrades
+  to its default.</p>
+  <div class="note"><strong>The meta-finding:</strong> a mock can simulate malformed <em>content</em>
+  but not a malformed <em>envelope</em>. This class of bug only appears under real load.</div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <div class="kicker">Full design · 6 of 7</div>
+  <h2>Phase 5 — two tiers of error detection</h2>
+  <p>The only stage that asks whether the <strong>assembled report</strong> answers the question asked.
+  Everything upstream is per-claim.</p>
+  <div class="cols">
+    <div class="box good">
+      <h3 style="margin-top:0">Tier 1 — mechanical, no LLM</h3>
+      <ul style="margin:0">
+        <li>retracted claim still asserted</li>
+        <li>sub-question with zero surviving claims</li>
+        <li>thin sub-question (avg conf &lt; 0.45)</li>
+        <li>contradictions found but never discussed</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3 style="margin-top:0">Tier 2 — independent critic</h3>
+      <p style="margin:0"><code>accept</code> · <code>revise_report</code> · <code>needs_more_research</code></p>
+    </div>
+  </div>
+  <p style="margin-top:1rem">Tier 1 findings are handed to the critic <strong>as established facts</strong>,
+  so the model spends attention on judgement calls instead of re-deriving what a substring check proved.</p>
+  <div class="note"><strong>The join:</strong> a <code>needs_more_research</code> gap is written into
+  <code>retrieval_attempts[-1].gap_noted</code> — which the reformulator already consumes.
+  Critic says <em>what’s missing</em> → reformulator turns it into <em>a different query</em>.
+  Report-level correction and retrieval-level learning are <strong>one loop, not two features.</strong></div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="kicker">Full design · 7 of 7</div>
+  <h2>MVP boundary — what I cut, and why that was right</h2>
+  <div class="cols">
+    <div>
+      <h3>Built and measured</h3>
+      <ul>
+        <li>Claim evolution + arithmetic routing</li>
+        <li>Quote-grounded refutation</li>
+        <li>Report self-correction (2 tiers)</li>
+        <li>Query reformulation + compaction</li>
+        <li>Live process narration</li>
+        <li>Six ablations, 82 offline checks</li>
+      </ul>
+    </div>
+    <div>
+      <h3 class="dim">Designed, deliberately not built</h3>
+      <ul class="dim">
+        <li>Parallel sub-questions · resume · caching</li>
+        <li>Learned calibration</li>
+        <li>Embedding retrieval / reranking</li>
+        <li>Tool router</li>
+        <li>Prompt-injection defence</li>
+        <li>Multi-modal output</li>
+      </ul>
+    </div>
+  </div>
+  <p style="margin-top:1rem">Every cut bought time for measurement instead of surface area.
+  <strong>The prioritisation is the thing being graded</strong> — and I would make the same call again.</p>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="kicker">Demo</div>
+  <h2>Watching it change its mind</h2>
+<pre>▸ Researching each sub-question
+  [sq_0] What empirical studies exist on inference-time compute scaling?
+    ◆ Allocating 2 retrieval round(s) — estimated difficulty 0.38
+    · Round 1: searched arXiv + web → 35 evidence chunks
+    · Re-examined 8 existing claim(s) → <span style="color:#3fb950">6 narrow, 1 reverse, 1 retract</span>
+    ◆ Changed position on 2 claim(s) — newer evidence outweighed what they were based on
+    · Previous search left a gap: lack of studies on model size vs. inference cost
+    ◆ <span style="color:#58a6ff">Searching again with a different query</span> — "empirical studies model size
+      inference-time performance metrics"</pre>
+  <p>Narration is a <strong>view over the trace, not a parallel logging path</strong> — anything that logs
+  is narratable, so the two cannot drift. Writes to stderr, so <code>run.py -n "q" &gt; report.md</code>
+  still yields a clean report.</p>
+  <div class="note">Land on the report’s <strong>confidence index</strong>: every claim with the confidence
+  the system actually computed, <em>plus a disclosed list of claims it retracted.</em></div>
+  <div class="say">Recorded, not live — ~2 h serial runtime and rate limits already killed two runs. Keep --mock ready as fallback.</div>
+</section>
+
+<!-- 13 -->
+<section class="slide">
+  <div class="kicker">Evaluation · 1 of 6</div>
+  <h2>How do you evaluate with no ground truth?</h2>
+  <p>A <strong>layered proxy stack</strong>, each layer with a stated failure mode:</p>
+  <ol>
+    <li><strong>Mechanical checks</strong> — no LLM; the only layer that cannot be wrong about what it measures</li>
+    <li><strong>Verifier <code>support_score</code></strong> — but conflates “more accurate” with “harder to fully entail”</li>
+    <li><strong>Blind, order-randomised pairwise judge</strong> — a structurally different question, so it
+    cannot inherit that conflation</li>
+    <li><strong>Paired ablation + McNemar’s exact test</strong> — isolates one variable</li>
+  </ol>
+  <div class="note bad">Name the circularity before they do: <strong>verifier, challenger and judge are all
+  LLMs, and the judge reuses the challenger’s client.</strong> No independent ground truth exists anywhere
+  in the stack.</div>
+  <div class="say">support_lift turned out to measure the wrong thing — caught by triangulating with a second metric. Appendix A4.</div>
+</section>
+
+<!-- 14 -->
+<section class="slide">
+  <div class="kicker">Evaluation · 2 of 6</div>
+  <h2>Track A — and the baseline that changes the answer</h2>
+  <p>The original claim: adaptive <strong>98% support @ 31K tokens</strong> vs. uniform
+  <strong>99% @ 110K</strong> — <strong>3.5× cheaper</strong>. That uniform baseline was
+  <em>4 rounds on everything</em> — the maximum.</p>
+  <p>My own decision log flagged the missing test: <em>“we did not test a minimum-compute baseline
+  (1 round for all).”</em> So I ran it.</p>
+  <table>
+    <tr><th>Arm</th><th class="num">Support</th><th class="num">ECE</th><th class="num">Tokens</th></tr>
+    <tr class="hi"><td><strong>uniform — 1 round each</strong></td><td class="num good">100.0%</td><td class="num good">0.203</td><td class="num good">1.85M</td></tr>
+    <tr><td>threshold (shipped)</td><td class="num">98.4%</td><td class="num">0.230</td><td class="num">3.22M</td></tr>
+    <tr><td>scheduler (new)</td><td class="num">98.3%</td><td class="num">0.221</td><td class="num">2.58M</td></tr>
+  </table>
+  <p class="bad"><strong>The least adaptive arm won on every metric and cost the least.</strong></p>
+  <p>Both claims are true. Adaptive sits <em>between</em> two baselines: 3.5× cheaper than max-uniform,
+  1.74× more expensive than min-uniform. <strong>Support rate is saturated at 98–100%, so the metric
+  cannot discriminate</strong> — and the cheapest arm wins by default.</p>
+  <div class="note warn">This is as much a <strong>test-design</strong> finding as a system finding.
+  The suite was built to stress claim evolution, not compute allocation.</div>
+</section>
+
+<!-- 15 -->
+<section class="slide">
+  <div class="kicker">Evaluation · 3 of 6</div>
+  <h2>Track B — I found a bug and mistook it for a result</h2>
+  <p>Three different ECE numbers across the repo looked like an inconsistency. Lining them up looked
+  like a finding: calibration had <em>halved</em>. I wrote that down as “claim evolution improved
+  calibration as a side effect.”</p>
+  <p>Then I ran the clean ablation — recomputing confidence over the <strong>same 582 stored claims</strong>,
+  which removes every confound but the formula:</p>
+  <table>
+    <tr><th>Formula</th><th class="num">ECE</th><th class="num">max conf</th></tr>
+    <tr><td>F1 — old 2-signal, weights sum to <strong>0.8</strong></td><td class="num">0.327</td><td class="num">0.80</td></tr>
+    <tr class="hi"><td>F2 — <em>same two signals</em>, rescaled to 1.0</td><td class="num good">0.163</td><td class="num">1.00</td></tr>
+    <tr><td>F3 — full 4-signal (shipped)</td><td class="num">0.162</td><td class="num">1.00</td></tr>
+    <tr><td>F4 — 4-signal <em>minus</em> reasoning</td><td class="num good">0.153</td><td class="num">1.00</td></tr>
+  </table>
+  <p><strong>The ceiling accounts for 100% of the gain.</strong> F1→F2 = −0.164.
+  F2→F3, the entire contribution of both evolution signals, = <strong>−0.0004</strong>.</p>
+  <p>A system right 92–100% of the time was <em>structurally incapable of saying so</em> — weights summing
+  to 0.8. And dropping <code>reasoning_score</code> makes calibration <em>better</em>.</p>
+  <div class="note">The honest version of this slide: <strong>I found a bug, mistook it for a result,
+  then ran the ablation that told me which it was.</strong></div>
+</section>
+
+<!-- 16 -->
+<section class="slide">
+  <div class="kicker">Evaluation · 4 of 6</div>
+  <h2>Track C — does evolution actually improve claims?</h2>
+  <p>570 revisions across 7 test cases. Blind judge: <strong>425 improved (81.7%)</strong>,
+  93 worse (17.9%), 2 same.</p>
+  <table>
+    <tr><th>Operation</th><th class="num">n</th><th class="num">mean Δsupport</th><th class="num">pre-fix</th></tr>
+    <tr><td><code>narrow</code></td><td class="num">466</td><td class="num good">+0.027</td><td class="num dim">+0.045</td></tr>
+    <tr class="hi"><td><code>reverse</code></td><td class="num">53</td><td class="num bad">−0.170</td><td class="num dim">−0.316</td></tr>
+    <tr><td><code>refine</code></td><td class="num">1</td><td class="num">0.000</td><td class="num dim">never fired</td></tr>
+  </table>
+  <h3>The fix that mattered, and why it generalises</h3>
+  <p>Refuting evidence must carry a <strong>verbatim quote, mechanically checked as a substring</strong>
+  of the cited chunk. <strong>159 of 715 challenges (22.2%)</strong> had a refuting citation dropped for
+  failing that check — one in five challenges was refuting on evidence that didn’t say what was claimed.</p>
+  <p class="bad">The prompt <em>already told the model</em> not to treat silence as refutation. It did it anyway.</p>
+  <div class="note warn">Counterweight: <code>reverse</code> still makes things worse ~1 time in 5, and
+  <code>refine</code> fired <strong>once in 570 revisions</strong> under <em>every</em> threshold
+  configuration tested — a branch that cannot fire is a branch that shouldn’t exist.</div>
+</section>
+
+<!-- 17 -->
+<section class="slide">
+  <div class="kicker">Evaluation · 5 of 6 · the result I did not want</div>
+  <h2>I tested my core design assumption. It came back false.</h2>
+  <p>The whole reason the challenger runs on a <em>different</em> model: a model critiquing its own claims
+  should go easy on them. Three consecutive evaluations named this the largest unverified claim in the system.</p>
+  <p><strong>Design the clean test, and reject the easy one.</strong> The repo already had an
+  <code>evolution_self</code> ablation — two full pipeline runs. Rejected: different runs retrieve
+  different evidence, confounding challenger identity with different inputs. Instead: replay the
+  <em>identical</em> (claim, evidence-pool) pairs through both challengers. n=105, seeded.</p>
+  <table>
+    <tr><th></th><th class="num">independent</th><th class="num">self (= extractor)</th></tr>
+    <tr><td>Found fault</td><td class="num">86/105 · 81.9%</td><td class="num bad">98/105 · 93.3%</td></tr>
+    <tr><td>Mean reasoning score</td><td class="num">0.727</td><td class="num">0.550</td></tr>
+  </table>
+  <p>Paired: both 86 · <strong>only-independent 0</strong> · only-self 12 · <strong>McNemar p = 0.0005</strong>.</p>
+  <p class="bad"><strong>The hypothesis is refuted and the effect runs the other way.</strong>
+  Not one claim in 105 where only the independent challenger objected. D021 corrected in place, not buried.</p>
+  <div class="note">State the confound yourself: this isolates the input, not the model.
+  The 2×2 crossover I then ran was <strong>underpowered</strong> (±20 pp cells) — but its
+  <em>main effect</em> confirmed the diagnosis: critic harshness 57.9% vs 25.8%, three times the interaction.</div>
+</section>
+
+<!-- 18 -->
+<section class="slide">
+  <div class="kicker">Evaluation · 6 of 6 · the second result I did not want</div>
+  <h2>The loop does not converge — and freezing was hiding it</h2>
+  <p>Every multi-round measurement was confounded: each round also ran fresh retrieval.
+  So: <strong>freeze the evidence pool</strong> and re-challenge the same claims for 5 passes.
+  Two conditions, because <code>stability_rounds</code> makes churn <em>look</em> bounded by construction.</p>
+  <table>
+    <tr><th>Pass</th><th class="num">1</th><th class="num">2</th><th class="num">3</th><th class="num">4</th><th class="num">5</th></tr>
+    <tr><td>freeze <strong>on</strong> — revisions</td><td class="num">5</td><td class="num">6</td><td class="num">5</td><td class="num">6</td><td class="num">5</td></tr>
+    <tr><td>freeze <strong>off</strong> — revisions</td><td class="num">6</td><td class="num">6</td><td class="num">4</td><td class="num">6</td><td class="num">5</td></tr>
+  </table>
+  <p><strong>Neither converges.</strong> Flat ~50% keep rate against evidence that never changed.
+  <strong>6 of 12 claims oscillate</strong> — returning to a wording they already held.</p>
+  <p><code>stability_rounds</code> is a <strong>circuit breaker, not a convergence mechanism</strong>:
+  6 claims froze, and the remaining 6 fell to a <strong>0% keep rate by pass 4</strong>.</p>
+  <div class="note bad"><strong>It invalidated a scheduler I had written hours earlier.</strong>
+  That scheduler scores allocation on “did the last round change any claim?” — and oscillating claims
+  change every round, forever. It would have poured the whole budget into the sub-question least able
+  to use it. Caught only because the experiment ran <em>before</em> the scheduler shipped.</div>
+  <p><strong>The reframe:</strong> oscillation is <em>diagnostic, not a bug.</em> A claim that cannot settle
+  means the evidence does not determine the answer. The system now distinguishes three honest states —
+  <span class="good">supported</span>, <span class="bad">retracted</span>, and
+  <span class="warn">genuinely contested</span>.</p>
+</section>
+
+<!-- 19 -->
+<section class="slide">
+  <div class="kicker">Would a bigger model fix this?</div>
+  <h2>Capability fixes <em>judgement</em>. It does not fix <em>compliance</em>.</h2>
+  <div class="cols">
+    <div>
+      <h3>The judge, same 30 pairs, order flipped</h3>
+      <table>
+        <tr><th>Judge</th><th class="num">consistent</th><th class="num">pos-locked</th></tr>
+        <tr><td>deepseek-chat</td><td class="num bad">50.0%</td><td class="num bad">33.3%</td></tr>
+        <tr><td>gpt-4.1</td><td class="num">73.3%</td><td class="num">23.3%</td></tr>
+        <tr class="hi"><td>gemini-2.5-pro</td><td class="num good">90.0%</td><td class="num good">0.0%</td></tr>
+      </table>
+      <p class="dim">Perfectly order-invariant. ~$2 per full sweep.</p>
+    </div>
+    <div>
+      <h3>Full pipeline, 3 arms</h3>
+      <table>
+        <tr><th>Arm</th><th class="num">support</th><th class="num">cost</th><th class="num">wall</th></tr>
+        <tr><td>weak + evolution</td><td class="num">97.8%</td><td class="num good">$0.29</td><td class="num">1346s</td></tr>
+        <tr><td>gpt-4.1, no evo</td><td class="num">100%</td><td class="num">$1.70</td><td class="num good">350s</td></tr>
+        <tr><td>gpt-4.1 + evo</td><td class="num">100%</td><td class="num bad">$2.53</td><td class="num">636s</td></tr>
+      </table>
+      <p class="dim">Faster: <strong>2.1×</strong>. Better: not measurably — saturated again.</p>
+    </div>
+  </div>
+  <div class="note bad"><strong>The surprise:</strong> ungrounded refutations went
+  <strong>4.4% (weak challenger) → 13.6% (strong)</strong>. Property compliance got
+  <em>3× worse</em> as capability went up. Quote-grounding earns its keep <em>more</em> with better models.</div>
+  <p><strong>The rule:</strong> enforce properties in code; spend money on judgement.</p>
+</section>
+
+<!-- 20 -->
+<section class="slide">
+  <div class="kicker">The pattern that ties it together</div>
+  <h2>When a property must hold, code it — don’t ask a model for it</h2>
+  <table>
+    <tr><th>Told the model to…</th><th class="num">Result</th></tr>
+    <tr><td>never treat silence as refutation</td><td class="num bad">22% ungrounded anyway</td></tr>
+    <tr><td>emit a confidence marker on every claim</td><td class="num bad">zero emitted</td></tr>
+    <tr><td>declare a stalemate rather than re-litigate</td><td class="num bad">0 of 60</td></tr>
+  </table>
+  <p>Each only held once it moved <strong>into code</strong>. And slide 19 draws the boundary:
+  capability fixes <em>judgement quality</em>, never <em>property compliance</em>.</p>
+  <div class="box bad" style="margin-top:1.2rem">
+    <h3 style="margin-top:0">…including my own tooling</h3>
+    <p style="margin:0">Three experiment scripts printed an automated verdict. <strong>All three
+    overstated their own data</strong> — “the process settles on its own” when neither arm converged;
+    “partially a memory problem” on a 29-vs-27 difference at n=12; “SELF-AGREEMENT BIAS PRESENT” on an
+    interaction whose two terms had opposite signs.</p>
+    <p style="margin:.6rem 0 0">Same mechanism every time: a threshold written <em>before</em> seeing the
+    data, with no branch for “inconclusive.” <strong>A generated conclusion is a claim like any other.</strong>
+    Left in the logs rather than quietly fixed.</p>
+  </div>
+</section>
+
+<!-- 21 -->
+<section class="slide">
+  <div class="kicker">Weaknesses · unprompted</div>
+  <h2>Where this system is weak</h2>
+  <ol>
+    <li><strong>No embeddings anywhere.</strong> Character chunking, keyword-only retrieval, round-robin
+    evidence selection, no reranking. <code>tc3</code> literally compares dense retrieval <em>without using it</em>.</li>
+    <li><strong>Support rate is saturated</strong> at 98–100%, so three separate experiments could not
+    discriminate between arms. <em>The next real experiment isn’t another arm — it’s a harder question.</em></li>
+    <li><strong>Multi-round was unreachable</strong> under the shipped allocator: 0 of 35 sub-questions
+    crossed the bar, because difficulty saturates at 0.13–0.31 while budget 3 needs 0.667.</li>
+    <li><strong>Two of four routing knobs are dead config</strong> — swept over 715 stored challenges,
+    they change <em>zero</em> decisions across their whole range.</li>
+    <li><strong>The quality stack is self-referential</strong> — verifier, challenger and judge are all
+    LLMs; the judge reuses the challenger’s client.</li>
+    <li><strong>Prompt injection:</strong> measured at <strong>1.8%</strong> success (1 of 56) — but only
+    against naive payloads, and 12 of 14 controls sat at the floor.</li>
+    <li><strong>No parallelism, retries, caching or resume.</strong> Rate limits crashed two runs.</li>
+    <li><strong>No multi-modal output</strong> — the brief’s Example 4 is a capability gap.</li>
+  </ol>
+  <div class="say">Lead with the most damaging, not the most defensible. They asked for this unprompted.</div>
+</section>
+
+<!-- 22 -->
+<section class="slide">
+  <div class="kicker">Research landscape · take a position</div>
+  <h2>Where this sits, and what I’d change</h2>
+  <ul>
+    <li><strong>Search-R1 / ReAct (S1)</strong> — interleaving is <em>orchestrated by the pipeline</em>,
+    not emitted by one model. Bought: per-step traceability, agent-level ablations. Lost: a learned
+    retrieval policy. The reformulator learns <em>within</em> a run only.</li>
+    <li><strong>Process reward models — Lightman (S2)</strong> — the verifier is a hand-built, untrained
+    step-level reward. <strong>The evolution traces are the dataset you’d need to train a real one</strong>:
+    570 revisions with before/after text, support scores, and blind judge verdicts.</li>
+    <li><strong>SCoRe (S3)</strong> — where does prompting hit its ceiling? Exactly at the boundary on
+    slide 20: <em>a property must hold, rather than usually happen.</em></li>
+    <li><strong>Snell, test-time compute (S4)</strong> — Track A is a direct applied instance, and the
+    measured limitation <em>is</em> the contribution: I know precisely which part I failed to implement well.</li>
+    <li><strong>MARS / debate (S5)</strong> — not built. What would change my mind: evidence that debate
+    catches a <em>different error class</em> than per-claim verification.</li>
+  </ul>
+</section>
+
+<!-- 23 -->
+<section class="slide">
+  <div class="kicker">What I’d do next</div>
+  <h2>Ordered by expected value</h2>
+  <ol>
+    <li><strong>A test case that actually stresses the system</strong> — every comparison is currently
+    measuring a ceiling. This unblocks Tracks A and C simultaneously.</li>
+    <li><strong>Embedding-based evidence selection</strong> — better design <em>and</em> closes the
+    fundamentals gap.</li>
+    <li><strong>Decouple the confidence formula from evolution</strong> — a real code defect surfaced
+    twice by two different experiments.</li>
+    <li><strong>Swap the judge to gemini-2.5-pro</strong> — 50% → 90% consistency for ~$2 a sweep.
+    Best price/quality trade found.</li>
+    <li><strong>Adequately powered 2×2 crossover</strong> — the one experiment that would settle D026.</li>
+    <li><strong>Prompt-injection hardening</strong> — delimit evidence, strip role markers.</li>
+    <li><strong>Train a PRM on the accumulated evolution traces</strong> — the data already exists.</li>
+  </ol>
+</section>
+
+<!-- 24 -->
+<section class="slide">
+  <div class="kicker">Close</div>
+  <h2>Three things to remember</h2>
+  <ol style="font-size:1.1em">
+    <li>Claims are not append-only — they evolve, and the decision to reverse one is
+    <strong>arithmetic, not an LLM’s opinion</strong>.</li>
+    <li>When a property must hold, <strong>code it; don’t ask a model for it</strong> —
+    measured three times. Capability fixes judgement, never compliance.</li>
+    <li>I measured my own core assumptions and <strong>four came back false</strong> —
+    corrected in place, not buried. One of them invalidated a component I’d written the same day.</li>
+  </ol>
+  <div class="box accent" style="margin-top:1.8rem">
+    <p style="margin:0;font-size:1.15em">The system’s most valuable output isn’t the report.
+    <strong>It’s the disclosed revision history.</strong></p>
+  </div>
+  <p class="dim" style="margin-top:1.5rem">Six ablations · 82 offline checks · $10.18 of real inference ·
+  34 documented decisions, each ending with “what it did not solve”</p>
+</section>
+
+</div>
+
+<footer>
+  <span id="label">Deep Research Agent</span>
+  <span><span id="cur">1</span> / <span id="tot">24</span>
+    <span class="dim"> · ← → navigate · N notes · P print</span></span>
+</footer>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide')), i=0;
+  var cur=document.getElementById('cur'), tot=document.getElementById('tot'), prog=document.getElementById('prog');
+  tot.textContent=slides.length;
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach(function(s,k){s.classList.toggle('active',k===i);});
+    cur.textContent=i+1;
+    prog.style.width=((i+1)/slides.length*100)+'%';
+    if(location.hash!=='#'+(i+1)) history.replaceState(null,'','#'+(i+1));
+    slides[i].scrollTop=0;
+  }
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();show(i+1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();show(i-1);}
+    else if(e.key==='Home'){show(0);} else if(e.key==='End'){show(slides.length-1);}
+    else if(e.key==='n'||e.key==='N'){document.body.classList.toggle('notes');}
+    else if(e.key==='p'||e.key==='P'){window.print();}
+  });
+  document.addEventListener('click',function(e){
+    if(e.target.closest('footer'))return;
+    show(i+(e.clientX>window.innerWidth*0.35?1:-1));
+  });
+  var h=parseInt((location.hash||'#1').slice(1),10);
+  show(isNaN(h)?0:h-1);
+})();
+</script>
+</body>
+</html>
