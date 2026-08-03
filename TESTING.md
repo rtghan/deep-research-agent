@@ -456,3 +456,68 @@ Practically: running the judge on gemini-2.5-pro costs roughly **$2 per full 7-c
 **The surprise:** ungrounded-refutation rate was **4.4% (weak challenger) vs 13.6% (strong challenger)** — a 3× *degradation* with capability. Property compliance got worse as the model got better, exactly the boundary §19.2 draws. Quote-grounding earns its keep *more* as models get stronger, not less.
 
 **The through-line across §17–19:** three independent experiments now say the same thing — support rate is saturated, so it cannot discriminate between arms, and every comparison built on it is measuring a ceiling. The next real experiment is not another arm; it is a harder question.
+
+---
+
+## 20. Parallel execution
+
+Sub-questions share no state, so they could always have run concurrently, and for a long time they
+didn't. That was the biggest practical drag on the project — a 7-case sweep took about 2.3 hours and
+an earlier one about 12, nearly all of it waiting on sequential HTTP requests. Every experiment was
+gated behind that.
+
+We did backoff first and concurrency second, deliberately. Rate limits had already killed two serial
+runs outright, and N workers multiply the request rate by N, so the other order would have made
+things less reliable rather than faster.
+
+### 20.1 What had to change
+
+Three problems, only one of which was a real correctness risk.
+
+**Claim IDs were racy.** They were built from `len(state.claims)` and counted up. Two extractors
+running at once read the same length and produce the same IDs. Claim IDs are foreign keys for
+contradictions, challenge records and the confidence index, so a collision would have cross-wired
+those references silently rather than raising anything. IDs are now scoped to the sub-question and
+round.
+
+**Token accounting lost updates.** `list.append` is atomic under the GIL, but `state.total_tokens +=
+cost_tokens` is a read-modify-write and isn't. Fixed with a lock in `log_step`, which is uncontended
+when running serially.
+
+**Narration interleaved.** Four workers writing at once produces a transcript nobody can follow, so
+each worker buffers its own lines and flushes them as a block when its sub-question finishes.
+Indentation depth is thread-local for the same reason.
+
+### 20.2 Results
+
+Same query, 3 sub-questions, 4 workers, mock LLM so retrieval is still real and dominates:
+
+| | wall | claims | unique IDs | evidence | tokens | trace |
+|---|---|---|---|---|---|---|
+| serial | 9.3s | 9 | 9 | 233 | 20740 | 75 |
+| parallel | 5.5s | 9 | 9 | 233 | 20740 | 76 |
+
+1.68× faster with identical output. The matching token totals are the part worth checking — that
+number would have drifted low without the lock. The one extra trace entry is the `parallel_start`
+marker; diffing the step sets confirms nothing else differs and nothing was lost.
+
+The speedup is modest here because there are only three sub-questions and mock mode still does real
+retrieval. With 5–7 sub-questions and real LLM latency it should get closer to the worker count.
+
+### 20.3 Tests
+
+Twelve new offline checks, aimed at the invariants rather than the happy path: unique claim IDs
+under six concurrent extractors, no claims lost, exact token totals under eight threads calling
+`log_step` 200 times each, contiguous per-worker narration, and the retryable/non-retryable status
+split. Suite is now 92 checks.
+
+### 20.4 What we left out
+
+The `scheduler` strategy re-ranks after every round to decide where the next one goes, so it can't
+be fanned out without losing the adaptivity that justifies it. The pipeline runs it serially instead
+of quietly degrading it.
+
+Retries aren't budgeted globally, so a heavily throttled run can take arbitrarily long rather than
+failing fast. `max_workers` is fixed rather than adapting when a provider starts throttling. And
+harness-level parallelism multiplies with pipeline-level parallelism, so `--eval --parallel` can
+issue `max_case_workers × max_workers` concurrent requests with nothing bounding the total.

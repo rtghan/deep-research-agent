@@ -1,18 +1,11 @@
 # Design
 
-The system I'd build for production, and why it's shaped this way. `ARCHITECTURE.md` covers what
-was actually built, file by file; `DECISIONS.md` is the running decision log; `TESTING.md` records
-what was measured and what broke. This document is the reasoning.
-
----
-
 ## 1. The problem
 
 A deep research agent takes a vague question and returns a report someone will act on. The obvious
-way to frame that is as a retrieval problem: find the right documents, summarise them well. I think
-that framing is wrong, and most of the design follows from rejecting it.
+way to frame that is as a retrieval problem: find the right documents, summarise them well. However, the challenge is obviously more complex as we deal with conflicting evidence and how well we can trust the drawn conclusions.
 
-Retrieval is largely solved here. arXiv and a web index will surface relevant material for almost
+Regarding retrieval, arXiv and a web index will surface relevant material for almost
 any research question you can pose. The hard part comes after. Research accumulates evidence over
 time, and something you find nine minutes in can invalidate a conclusion you drew after two. A
 system that never revisits its own conclusions will confidently report the first plausible answer
@@ -23,14 +16,14 @@ immutable outputs of an extraction step. Everything below follows from that.
 
 ### 1.1 Assumptions
 
-| # | Assumption | What breaks if it's wrong |
+| # | Assumption |
 |---|---|---|
-| A1 | No ground truth exists for a research report; quality has to be measured by proxy | The whole evaluation stack in §6 collapses into "just check the answer" |
-| A2 | Sources genuinely conflict, and disagreement is signal | Contradiction handling and the `contested` state are wasted machinery |
-| A3 | Users act on the output, so a confidently-wrong claim costs more than a hedged-correct one | Optimise for coverage instead of calibration, and the verification track shrinks a lot |
-| A4 | LLM cost and latency bind before retrieval does | Adaptive allocation matters much less; just retrieve everything |
-| A5 | Retrieved content is untrusted input | §7.1 is unnecessary |
-| A6 | The model won't reliably follow instructions that must *always* hold | Half of §5 is ceremony. This one got measured three times (§8.1) |
+| A1 | No ground truth exists for a research report; quality has to be measured by proxy  |
+| A2 | Sources can conflict, and disagreement is signal |
+| A3 | Users act on the output, so a confidently-wrong claim costs more than a hedged-correct one |
+| A4 | LLM calls and compute should be carefully allocated |
+| A5 | Retrieved content is untrusted input |
+| A6 | The model won't reliably follow instructions that must *always* hold |
 
 ---
 
@@ -38,26 +31,18 @@ immutable outputs of an extraction step. Everything below follows from that.
 
 ### 2.1 Agent boundaries
 
-A boundary belongs where the optimisation target changes, not where the work merely looks different.
-Splitting by task — a searching agent, a writing agent — gives you agents that share an objective
-and therefore duplicate each other's blind spots.
-
 | Agent | Optimises for | Characteristic failure |
 |---|---|---|
 | Planner | decomposition coverage | sub-questions that overlap or miss the intent |
 | Researcher | evidence breadth | retrieving volume instead of diversity |
 | Extractor | claim coverage | over-extraction; claims not traceable to text |
 | Verifier | entailment: does the cited text support this? | rubber-stamping a faithful restatement of a cherry-picked chunk |
-| Challenger | warrant: is this sound given *all* the evidence? | fabricating refutations, or objecting to everything |
-| Reviser | executing one operation faithfully | rewriting toward whatever is convenient |
-| Judge | comparative quality | position bias — measured at 30% of verdicts |
+| Challenger | warrant: is this sound given all the evidence? | fabricating refutations, or objecting to everything |
+| Reviser | refining claims based on feedback | rewriting toward whatever is convenient |
+| Judge | if there was refinement, was it actually for the better? | simply selecting the "new" version automatically judging it to be better |
 | Report critic | did we answer what was asked? | critiquing style instead of substance |
-| Synthesiser | faithful assembly | overstating claim confidence in prose |
+| Synthesiser | faithful assembly | overstating claim confidence|
 
-The verifier/challenger split is the one worth defending. A claim can restate one chunk perfectly
-and score 1.0 on support while still being an unsound generalisation from the pool as a whole.
-`support_score` has no way to say that. `reasoning_score` is a separate axis, and having both is
-what makes the routing in §2.3 possible at all.
 
 ### 2.2 What agents share
 
@@ -65,13 +50,10 @@ Agents share the `ResearchState` object, mediated by the orchestrator. None of t
 agent's prompt or raw output.
 
 Sub-questions share nothing. If sq₁ retrieves a paper that's relevant to sq₃, sq₃ goes and fetches
-it again. That keeps them independent and parallelisable and stops one sub-question's framing
-leaking into another, and it's also plainly wasteful. In production I'd put a content-hash cache
-under retrieval, which drops the redundant fetches while keeping the reasoning independent.
+it again. This was done for the ease of repeating the sub-question task, though it is resource wasteful. 
 
-One thing is deliberately withheld: the challenger sees the extractor's claim but not its
-reasoning. Show it the justification and you invite it to agree with the argument rather than
-assess the claim.
+Between agents, the challenger sees the extractor's claim but not its reasoning. If we showed the justification, we risk it automatically agreeing with the argument rather than
+assessing the claim.
 
 ### 2.3 Control flow
 
@@ -84,8 +66,7 @@ Query → Plan → ⟨per sub-question⟩ → cross-source contradictions → sy
 There are two loops, and they're the only two places the system can change its mind: inside a
 sub-question, and over the finished report.
 
-The rule that matters is that changing a claim's *position* requires evidence dominance rather than
-a critic's insistence. Routing is arithmetic over a source-weighted balance:
+Changing a claim's position requires evidence dominance rather than a critic's insistence. We determine this by computing:
 
 ```
 balance = (supporting_sources − refuting_sources) / (supporting_sources + refuting_sources)
@@ -94,30 +75,58 @@ balance = (supporting_sources − refuting_sources) / (supporting_sources + refu
 Counting distinct sources rather than chunks is load-bearing. One paper chopped into forty chunks
 shouldn't outvote three papers that disagree with it. Thresholds on that number pick between
 `keep`, `refine`, `narrow`, `reverse` and `retract`. An aggressive critic can't flip a well-supported
-claim by being loud, the reason any claim reversed is a number sitting in the trace, and how
-aggressive the system is becomes a config value instead of a prompt rewrite.
+claim by being loud, and the reason any claim reversed is a number that can be seen in the trace.
 
-Worth flagging: sweeping all four routing thresholds over 715 stored challenges, two of them change
-zero decisions anywhere in their plausible range. Behaviour is set by `reversal_balance_threshold`
-and `min_sources_for_reversal`. In production I'd delete the other two rather than ship configuration
-that implies tuning capability it doesn't have.
+We swept all four routing thresholds over 715 stored challenges. Two of them change zero decisions
+anywhere in their plausible range, so behaviour is really set by `reversal_balance_threshold` and
+`min_sources_for_reversal` alone. In production we'd delete the other two rather than ship
+configuration that implies more tuning capability than it has.
 
-### 2.4 Orchestration in production
+### 2.4 Serial and parallel execution
 
-The MVP runs serially in one process. Right call for an MVP, wrong design for production.
+Sub-questions share no state, so they can run concurrently. For a while they didn't, and that cost
+us more than anything else in the project: a 7-case evaluation sweep took about 2.3 hours and an
+earlier one about 12, nearly all of it spent waiting on sequential HTTP requests. Every experiment
+was gated on that wait.
 
-| Concern | What production needs |
-|---|---|
-| Parallelism | Sub-questions are independent by construction, so fan them out. The 12-hour and 2.3-hour eval runs were serial execution of embarrassingly parallel work. |
-| Scheduling | A global budget pool with work ranked by marginal value (this exists as `scheduler.py`) rather than per-item thresholds, so cost is a knob instead of an outcome. |
-| Durability | Checkpoint `ResearchState` each round and resume from it. Today a two-hour run that dies at 90% starts over. |
-| Backpressure | Exponential backoff and a per-provider circuit breaker. Rate limits killed two full runs during evaluation. |
-| Idempotency | Content-hash cache on retrieval, and on `(claim, evidence, prompt_version)` for LLM calls. A large share of evaluation cost was re-deriving identical results. |
+Both modes now exist and produce the same results. Serial is the default; parallel is opt-in via
+`execution.parallel_sub_questions` or `--parallel`, and `--serial` forces the default back
+regardless of config. On the same query with 3 sub-questions and 4 workers:
 
-I didn't use LangGraph or CrewAI. About 1,500 lines of plain Python keeps `pipeline.py` readable
-start to finish, which mattered more than durable execution for a system whose whole point is
-auditability. That calculus flips once you need resume and fan-out, and at that point a framework
-earns its opacity.
+| | wall | claims | unique IDs | evidence | tokens |
+|---|---|---|---|---|---|
+| serial | 9.3s | 9 | 9 | 233 | 20740 |
+| parallel | 5.5s | 9 | 9 | 233 | 20740 |
+
+Identical output at 1.68× the speed. The matching token counts are the useful part of that table:
+accumulating tokens is a read-modify-write, so an unlocked version would have quietly undercounted.
+
+Three things had to change before this was safe.
+
+Claim IDs used to be derived from `len(state.claims)`, counting up from whatever the list length
+was. Two extractors running at once read the same length and mint the same IDs. Since claim IDs are
+foreign keys for contradictions, challenge records and the confidence index, a collision would have
+cross-wired those references without anything failing. IDs are now scoped to the sub-question and
+round.
+
+Retry with backoff came first, before any concurrency. Rate limits had already killed two serial
+runs, and N workers multiply the request rate by N, so adding parallelism without backoff would
+have made the system less reliable rather than faster. Retries use jittered exponential backoff —
+the jitter matters because workers that all get throttled together would otherwise retry in
+lockstep and recreate the burst.
+
+Narration interleaves badly with four workers writing at once, so each worker buffers its own lines
+and flushes them as one block when its sub-question finishes.
+
+The scheduler strategy is excluded from all of this. It re-ranks after every round to decide where
+the next one goes, so it can't be fanned out without giving up the adaptivity that justifies it.
+The pipeline detects that and runs it serially instead of silently degrading it.
+
+What's still missing: retries aren't budgeted globally, so a heavily throttled run can take
+arbitrarily long rather than failing fast; `max_workers` is fixed rather than backing off when a
+provider starts throttling; and harness-level parallelism multiplies with pipeline-level
+parallelism, so `--eval --parallel` can issue `max_case_workers × max_workers` concurrent requests
+with no single semaphore bounding the total.
 
 ---
 
@@ -361,20 +370,24 @@ that. The fix is to always emit the contingency table and never just the verdict
 
 | Built and measured | Designed, not built |
 |---|---|
-| Claim evolution + arithmetic routing | Parallel sub-question execution |
-| Quote-grounded refutation | Durable checkpointing and resume |
-| Report self-correction (two tiers) | Content-hash caching |
-| Query reformulation + compaction | Retry, backoff, circuit breakers |
-| Live process narration | Cross-run memory |
-| Deterministic confidence index | Learned calibration |
-| Global scheduler (alternate strategy) | Embedding retrieval and reranking |
-| Six ablations, 82 offline checks | Tool router; multi-modal output |
-| Prompt-injection measurement | Prompt-injection defence |
+| Claim evolution + arithmetic routing | Durable checkpointing and resume |
+| Quote-grounded refutation | Content-hash caching |
+| Report self-correction (two tiers) | Cross-run memory |
+| Query reformulation + compaction | Learned calibration |
+| Live process narration | Embedding retrieval and reranking |
+| Deterministic confidence index | Tool router; multi-modal output |
+| Global scheduler (alternate strategy) | Prompt-injection defence |
+| Parallel execution + retry backoff | Adaptive concurrency / global rate budget |
+| Eight experiments, 92 offline checks | |
 
 Everything on the left either is the core idea or tests it. Everything on the right is engineering
 that would make the idea deployable but can't tell you whether the idea is any good. Given two days,
 finding out that reversal damages support and then fixing it was worth more than making the system
 resumable.
+
+Parallel execution moved across after the fact. It doesn't improve report quality at all — it only
+makes evaluation faster — but the wait on serial sweeps was the main thing limiting how much we
+could measure, so it paid for itself in experiments rather than in output.
 
 The one item I'd move left given another day is a test case where the metric has headroom. Three
 experiments failed to discriminate for want of it, which makes it the highest-value missing piece in

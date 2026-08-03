@@ -16,7 +16,7 @@ Some of the core concepts behind the design:
 pip install -e .
 cp .env.example .env    # add OPENAI_API_KEY or OPENROUTER_API_KEY
 
-PYTHONPATH=. python tests/test_evolution.py   # 82 offline checks, ~1s, no network, no API key
+PYTHONPATH=. python tests/test_evolution.py   # 92 offline checks, ~1s, no network, no API key
 python run.py --demo --mock              # full pipeline, no API key   (~2 min)
 python run.py --demo --narrate           # watch it reason (see below) (~5 min)
 python run.py "your research question"

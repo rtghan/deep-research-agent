@@ -435,7 +435,7 @@ extract_claims(state, sq, evidence_chunks, llm, config) → list[Claim]
 
 - **Input:** Evidence chunks for one sub-question (text truncated to 800 chars each)
 - **LLM call:** System prompt asks for JSON `{claims: [{text, evidence_indices: [0, 1]}]}`
-- **Output:** Creates `Claim(claim_id=f'claim_{N+i}', text, evidence_ids, sub_question_id=sq.sq_id)` objects
+- **Output:** Creates `Claim(claim_id=f'{sq_id}_r{round}_c{i}', text, evidence_ids, sub_question_id=sq.sq_id)` objects. IDs are scoped to the sub-question and round rather than counted from `len(state.claims)`, because the old scheme was a read-then-write race: two extractors running in parallel read the same list length and mint the same IDs. Claim IDs are foreign keys for contradictions, challenge records and the confidence index, so a collision would cross-wire those references without anything failing.
 - **State mutation:** Appends to `state.claims` and `sq.claim_ids`
 - **Trace:** Logs step `'extractor.extract'`
 - **Goal:** Extract atomic, verifiable claims — each claim linked to its supporting evidence chunks.
@@ -540,6 +540,45 @@ These findings are passed to the critic as *established facts*, so the LLM spend
 
 ---
 
+## 9B. Execution: serial and parallel — `src/orchestrator/pipeline.py`, `eval/harness.py`
+
+Serial is the default. Parallel is opt-in through `execution.parallel_sub_questions` (config) or
+`--parallel` / `--serial` / `--workers N` (CLI), where `--serial` wins so the reference behaviour is
+always one flag away.
+
+Two independent levels:
+
+| Level | What fans out | Shared state |
+|---|---|---|
+| Pipeline | sub-questions within one run | one `ResearchState`, appended to concurrently |
+| Harness | whole test cases under `--eval` | none at all — separate state, separate output dir |
+
+Verified equivalent on the same query (3 sub-questions, 4 workers, mock LLM so retrieval still
+dominates): serial 9.3s vs parallel 5.5s, both producing 9 claims, 9 unique IDs, 233 evidence chunks
+and 20740 tokens. The trace differs by exactly one entry, the `parallel_start` marker.
+
+Four things make it safe:
+
+1. **Claim IDs** scoped to sub-question and round (see §9.3), so concurrent extractors can't collide.
+2. **`log_step` holds a lock** over the trace append and the token/latency accumulation. `list.append`
+   is atomic under the GIL but `+=` on an int attribute is a read-modify-write and loses updates.
+   The lock is uncontended in serial mode.
+3. **Narration buffers per thread.** Each worker collects its own lines and flushes them as one
+   block when its sub-question finishes; indentation depth is thread-local. Without this, four
+   workers interleave into an unreadable transcript.
+4. **Retry with jittered exponential backoff** in `LLMClient` (§10.1), which is a precondition
+   rather than a companion feature — N workers multiply request rate by N, and rate limits had
+   already killed two serial runs.
+
+Failures are isolated per sub-question: a worker raising marks that sub-question
+`sufficient_evidence=False` and logs it, rather than losing the other four.
+
+**The `scheduler` strategy always runs serially.** It re-ranks after every round to choose where the
+next one goes, so fanning it out would discard the adaptivity that justifies it. The pipeline detects
+this and falls back rather than silently degrading.
+
+---
+
 ## 10. Retrieval Tools: `src/tools/`
 
 ### 10.1 LLM Client — `src/tools/base.py`
@@ -557,6 +596,13 @@ The `LLMClient` wraps the OpenAI Python SDK and supports both OpenAI and OpenRou
    - Bare `{...}` with balanced-brace matching
 
 This fallback was added in the `002-free-model-websearch-pdf` branch specifically for OpenRouter free models.
+
+**Retries.** `complete()` and `complete_json()` (including its plain-text fallback) route through
+`_with_retry`, which retries transient failures with jittered exponential backoff. Retryable means
+408/409/425/429/5xx plus connection-level errors; 400 and 404 raise straight away rather than
+burning the retry budget on something that will never succeed. The jitter matters under parallel
+execution — workers throttled at the same moment would otherwise retry in lockstep and recreate the
+burst that throttled them. Defaults: `max_retries=4`, `backoff_base=1.5`.
 
 **OpenRouter support:** When `config.llm.base_url` is set (e.g. `https://openrouter.ai/api/v1`), the client passes it to the OpenAI SDK. API key is read from the env var named in `config.llm.api_key_env` (e.g. `OPENROUTER_API_KEY` or `OPENAI_API_KEY`).
 
