@@ -80,6 +80,7 @@ Query
 | Challenger | `src/agents/challenger.py` | Is this claim warranted? (independent model) |
 | Reviser | `src/agents/reviser.py` | Executes the routed operation |
 | Evolution loop | `src/orchestrator/evolution.py` | Balance arithmetic + routing |
+| Scheduler | `src/orchestrator/scheduler.py` | Alternate allocation strategy (ranking vs thresholds) |
 | Judge | `src/scoring/judge.py` | Blind pairwise before/after quality |
 | Confidence scorer | `src/scoring/confidence.py` | Calibrated per-claim confidence |
 | Synthesizer | `src/agents/synthesizer.py` | Report + deterministic confidence index |
@@ -88,3 +89,15 @@ Query
 | Narration | `src/obs/progress.py` | Live process visibility |
 
 Environment: `OPENAI_API_KEY` or `OPENROUTER_API_KEY` (required); `TAVILY_API_KEY` (optional — falls back to DuckDuckGo/Wikipedia).
+
+## Where to look
+
+| | |
+|---|---|
+| `DESIGN.md` | The full production design — architecture, assumptions, and the concerns the brief didn't name |
+| `ARCHITECTURE.md` | File-by-file walkthrough of the MVP as-built |
+| `DECISIONS.md` | 34 decisions, each ending with what it did not solve |
+| `TESTING.md` | Chronological development log, including everything that failed |
+| `SUBMISSION_REVIEW.md` | Honest audit of this repo against the brief |
+| `experiments/` | Every experiment behind every number, and what each one answered |
+| `presentation/` | Slide deck (`slides.html`) + speaking outline |
