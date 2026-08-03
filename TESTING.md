@@ -440,3 +440,19 @@ Three earlier findings all concluded *"when a property must hold, code it; don't
 The distinction is whether the model *didn't do what it was told* or *wasn't good enough at the task*. Only the second is buyable. Restated as a design rule: **enforce properties in code; spend money on judgement.**
 
 Practically: running the judge on gemini-2.5-pro costs roughly **$2 per full 7-case sweep** (~520 revisions × ~2.5K tokens) and takes the headline metric from 50% to 90% self-consistency. That is the single best price/quality trade found in this project. Not switched automatically, because it would break comparability with every run already reported.
+
+### 19.3 Full pipeline: capability vs. architecture (3 arms, 3 cases, run sequentially)
+
+| arm | claims | support | ECE | tokens | cost | wall |
+|---|---|---|---|---|---|---|
+| A — weak + evolution | 137 | 97.8% | 0.230 | 1.34M | **$0.29** | 1346s |
+| B — gpt-4.1, no evolution | 107 | **100.0%** | 0.365 | 0.59M | $1.70 | **350s** |
+| C — gpt-4.1 + evolution | 100 | **100.0%** | 0.259 | 0.87M | $2.53 | 636s |
+
+**Read the ECE column with care — it is confounded.** Turning evolution off also switches the confidence formula (no `reasoning_score` → the 2-signal fallback with its 0.8 ceiling). Arm B's 0.365 ≈ D030's measured 0.327 for that formula. So B→C is mostly a formula artifact, which is the *same* trap D030 caught earlier — and its recurrence exposes a real code defect: formula selection is coupled to whether evolution ran, when it should be independent.
+
+**Answers to "better or faster?":** faster — **2.1× on matched work** (C vs A). Better — +2.2 pp support, on a metric saturated at 97.8–100%, so not meaningfully. Worth it — **8.7× the cost** for that, unless latency is the constraint.
+
+**The surprise:** ungrounded-refutation rate was **4.4% (weak challenger) vs 13.6% (strong challenger)** — a 3× *degradation* with capability. Property compliance got worse as the model got better, exactly the boundary §19.2 draws. Quote-grounding earns its keep *more* as models get stronger, not less.
+
+**The through-line across §17–19:** three independent experiments now say the same thing — support rate is saturated, so it cannot discriminate between arms, and every comparison built on it is measuring a ceiling. The next real experiment is not another arm; it is a harder question.

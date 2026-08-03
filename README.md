@@ -146,6 +146,20 @@ Against the *minimum*-compute baseline (1 round each), which D011 flagged as unt
 
 Environment: `OPENAI_API_KEY` or `OPENROUTER_API_KEY` (required); `TAVILY_API_KEY` (optional — falls back to DuckDuckGo/Wikipedia).
 
+## Does a bigger model just fix this?
+
+Tested directly (3 arms, 3 cases, run sequentially for clean latency):
+
+| arm | support | tokens | cost | wall |
+|---|---|---|---|---|
+| gpt-4o-mini + deepseek, evolution on | 97.8% | 1.34M | **$0.29** | 1346s |
+| gpt-4.1, evolution **off** | **100.0%** | 0.59M | $1.70 | **350s** |
+| gpt-4.1, evolution on | **100.0%** | 0.87M | $2.53 | 636s |
+
+**Faster: yes** — 2.1× on matched work. **Better: not measurably** — support is saturated at 97.8–100%, so +2.2 pp says more about the test suite than the models. **Worth 8.7× the cost: only if latency is the constraint.**
+
+The surprise: the *strong* challenger produced **13.6%** ungrounded refutations vs the weak one's **4.4%** — property compliance got 3× worse as capability went up. Which is why the quote-grounding check matters more, not less, with better models. See D035/D037.
+
 ## Honest limitations
 
 1. **No embeddings anywhere.** Chunking is fixed-size character slicing; retrieval is keyword-only; evidence selection for the challenger is round-robin by source, not semantic relevance. For a retrieval-heavy system this is the most conspicuous gap.

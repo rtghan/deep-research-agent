@@ -762,3 +762,30 @@ The README's framing is therefore incomplete rather than wrong, and needs the se
 **What we changed.** Nothing in the defaults. The result is about which baseline a claim is measured against, not about a bug.
 
 **What it did not solve.** Four test cases, one config, one model pair. Support rate is a saturated and therefore weak discriminator — a metric that separates arms at the top of its range (e.g. human-judged answer completeness, or coverage of the sub-question) would be needed to tell whether the extra claims from adaptive arms carry *information* even when they do not move support. And the Pareto frontier still has only three points on it.
+
+---
+
+## D037 — Does capability substitute for the architecture? Faster yes, better no, and the strong challenger was worse **[S4]**
+
+**The problem.** The obvious skeptical question about this entire project: *wouldn't a better model just do this anyway?* If a strong model with no evolution machinery matches a weak model with all of it, the machinery is ceremony. Worth knowing before being asked.
+
+**What we did.** Three arms, three test cases, everything but model/evolution held identical, run **sequentially** so wall-clock is meaningful.
+
+| arm | claims | support | ECE | tokens | cost | wall |
+|---|---|---|---|---|---|---|
+| A — gpt-4o-mini + deepseek, evolution **on** | 137 | 97.8% | 0.230 | 1.34M | **$0.29** | 1346s |
+| B — gpt-4.1, evolution **off** | 107 | **100.0%** | 0.365 | 0.59M | $1.70 | **350s** |
+| C — gpt-4.1, evolution **on** | 100 | **100.0%** | 0.259 | 0.87M | $2.53 | 636s |
+
+**The ECE column is confounded and must not be read as an evolution effect.** Disabling evolution also silently changes the confidence formula: with no `reasoning_score`, `score_confidence` falls back to the 2-signal version whose weights sum to 0.8. Arm B's 0.365 is almost exactly D030's measured F1 value (0.327) for that formula. So the B→C calibration gap is mostly the formula, not the machinery — the same mistake D030 caught earlier, reappearing in a new experiment because *any* evolution on/off comparison silently swaps formulas. That coupling is a design defect in the code, not just in this test: the confidence formula should be selected independently of whether evolution ran.
+
+**What is valid, and the answers to the question asked:**
+
+- **Faster: yes, clearly.** On matched work (C vs A — same pipeline, different models) gpt-4.1 is **2.1× faster** in wall-clock (636s vs 1346s). Arm B is 3.8× faster than A, but part of that is simply doing less work.
+- **Better: marginally, and unmeasurable.** Support 100% vs 97.8% (+2.2 pp) — but every arm sits at 97.8–100%, so the metric is **saturated** and cannot discriminate. This is the same ceiling that made D036's comparison uninformative.
+- **Worth it: probably not, at these settings.** Arm C costs **8.7×** arm A for +2.2 pp on a saturated metric. If latency matters, the 2.1× speedup is the real argument; quality is not.
+- **Does capability substitute for the architecture?** On these test cases, evolution added **nothing** on top of a strong model (C vs B: identical 100% support, +49% cost). But with the metric at its ceiling, that is a statement about the *test suite*, not about the machinery.
+
+**The genuinely surprising result: the strong challenger was worse at the one thing we measure it on.** Ungrounded-refutation rate — challenges proposing refuting evidence whose quote fails the substring check — was **4.4% for the weak challenger (deepseek-chat) and 13.6% for the strong one (gpt-4.1)**, a 3× *degradation* with capability. That is a property-compliance failure, and it lines up exactly with D035's boundary: capability improves *judgement* and does nothing for *property compliance* — here it actively hurt. It also means the quote-grounding check earns its keep more, not less, as models get stronger.
+
+**What it did not solve.** Three test cases, one strong model, saturated primary metric. The comparison that would actually settle this needs a question where round-1 evidence is demonstrably insufficient and support rate has room to move — which, per D036, the suite does not currently contain. Also unmeasured: whether arm B's *fewer* claims (107 vs 137) are better-chosen or merely fewer.
